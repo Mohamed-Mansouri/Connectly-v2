@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace "com.example.flutter_full_course"
+    namespace "com.example.connectly_v2"
     compileSdk flutter.compileSdkVersion
     ndkVersion flutter.ndkVersion
 
@@ -20,7 +20,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId "com.example.flutter_full_course"
+        applicationId "com.example.connectly_v2"
         // You can update the following values to match your application needs.
         // For more information, see: https://docs.flutter.dev/deployment/android#reviewing-the-gradle-build-configuration.
         minSdk flutter.minSdkVersion
