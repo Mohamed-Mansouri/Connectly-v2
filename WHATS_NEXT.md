@@ -1,8 +1,10 @@
 # Next sprint
 
-## First: run the baseline
+## First: use the baseline
 
-Install Flutter, open this repository folder, and run `flutter doctor`, `flutter pub get`, `flutter analyze`, `flutter test`, and `flutter run -d chrome`. The expected path is Home -> Open modules -> Feed, Nearby, Chats, and Profile tabs. Each feature branch changes just its tab. Give v2 a separate Android application ID before Android testing beside the original app.
+Flutter, Android Studio, and Android SDK are installed, and the baseline launched on a physical Android phone. Open this repository in VS Code and follow [README.md](README.md) for the exact terminal commands. The expected path is Home -> Open modules -> Feed, Nearby, Chats, and Profile tabs. Each feature branch changes just its tab. The Android application ID is `com.example.connectly_v2`.
+
+Run `flutter test` on the `navigation` branch. As new screens are added, update the UI guide with their widgets, data states, and actions. The old combined preview and its design screenshots remain on `archive/sprint-0`.
 
 ## Shared backend decision
 
@@ -16,4 +18,4 @@ Choose one backend and database, a common user ID, token format, error response,
 | `messaging` | Conversations and group chat; `GET/POST /conversations`, `GET/POST /conversations/{id}/messages` | Voice message recording, transcription, translation, and searchable text. |
 | `navigation` | Route ownership, sign-in gate, and deep-link plan | Restore the correct tab and screen from a deep link after authentication. |
 
-Keep each new screen, its state management, and API client within its feature folder. Update [UI_GUIDE.md](UI_GUIDE.md) when a screen changes. The original design screenshots are preserved on `archive/sprint-0`; their Nearby and Chat layouts can guide the relevant module work.
+Keep each new screen, its state management, and API client within its feature folder. Update [UI_GUIDE.md](UI_GUIDE.md) when a screen changes.
