@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'connectly_theme.dart';
+import 'home_screen.dart';
 
 class ConnectlyApp extends StatelessWidget {
   const ConnectlyApp({super.key});
@@ -11,9 +12,7 @@ class ConnectlyApp extends StatelessWidget {
       title: 'Connectly',
       debugShowCheckedModeBanner: false,
       theme: ConnectlyTheme.dark,
-      home: const Scaffold(
-        body: Center(child: Text('Connectly baseline')),
-      ),
+      home: const HomeScreen(),
     );
   }
 }
