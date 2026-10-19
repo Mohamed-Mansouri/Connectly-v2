@@ -2,7 +2,9 @@
 
 This is the new Flutter repository for our four-person university project. Open **`C:\Users\Med\Documents\Connectly-v2`** in VS Code. The older project in `C:\Users\Med\Documents\Connectly` is separate.
 
-The `main` branch is the shared baseline. It has a Home screen, navigation, theme, and empty module entry points. Login, posts, maps, messaging, APIs, and advanced features are planned work, not implemented behavior.
+The `main` branch is the shared baseline. It has a Home screen, navigation, theme, and empty module entry points. Login, posts, maps, messaging, storage, and advanced features are planned work, not implemented behavior.
+
+The first tier uses **local SQLite and Hive**, with Flutter repositories accessing storage directly on the phone. SQLite holds application records; Hive holds preferences, drafts, and local session state. The first tier has no backend API dependency. Shared cloud data and APIs are later-tier work; see [WHATS_NEXT.md](WHATS_NEXT.md) for the plan.
 
 ## Project views
 
@@ -17,7 +19,7 @@ The flow on `main` is **Home -> Open modules -> Feed / Nearby / Chats / Profile*
 | Chats | An empty starting point for conversations. | `lib/features/messaging/module_entry.dart` |
 | Profile | An empty starting point for accounts and profile. | `lib/features/auth/module_entry.dart` |
 
-The four empty tabs on `main` use one shared `ModulePlaceholderScreen`. Each feature branch replaces **only its own tab** with a starting screen in its `presentation` folder. For example, `git switch discovery` shows the Nearby starting screen while the other tabs remain placeholders. These branch screens still have no API data. See [UI_GUIDE.md](UI_GUIDE.md) for the widgets and navigation behavior.
+The four empty tabs on `main` use one shared `ModulePlaceholderScreen`. Each feature branch replaces **only its own tab** with a starting screen in its `presentation` folder. For example, `git switch discovery` shows the Nearby starting screen while the other tabs remain placeholders. These starting screens do not yet load stored application records. See [UI_GUIDE.md](UI_GUIDE.md) for the widgets and navigation behavior.
 
 ## Branches
 
@@ -31,7 +33,7 @@ The four empty tabs on `main` use one shared `ModulePlaceholderScreen`. Each fea
 | `navigation` | Shared navigation test and future routing work. |
 | `archive/sprint-0` | Earlier combined preview and supplied design screenshots. |
 
-Run `git branch --list` to see the branches and `git switch auth` (or another branch name) to inspect one module. Switching branches changes the files in the open folder. Read [BRANCHES.md](BRANCHES.md) before merging work, and [WHATS_NEXT.md](WHATS_NEXT.md) for planned endpoints and advanced features.
+Run `git branch --list` to see the branches and `git switch auth` (or another branch name) to inspect one module. Switching branches changes the files in the open folder. Read [BRANCHES.md](BRANCHES.md) before merging work, and [WHATS_NEXT.md](WHATS_NEXT.md) for local storage responsibilities and advanced feature targets.
 
 ## Run from the VS Code terminal
 

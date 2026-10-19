@@ -18,4 +18,4 @@ The four tabs on `main` show a titled `Scaffold` and an `EmptyState` with an ico
 - `ConnectlyTheme` supplies the dark navy and yellow app colors and styles the navigation bar.
 - `ConnectlyApp` creates `MaterialApp` and selects Home as the start screen. `main.dart` only calls `runApp`.
 
-For each future screen, document its visible widgets, user actions, navigation, API data, and loading, empty, and error states here. A visual control should have real behavior before being presented as a working feature.
+For each future screen, document its visible widgets, user actions, navigation, SQLite records or Hive values, and loading, empty, and error states here. The first tier accesses local storage through feature repositories. Include restart persistence and local test-account behavior when documenting a completed flow. A visual control should have real behavior before being presented as a working feature.
