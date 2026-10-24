@@ -1,5 +1,9 @@
 # Miscellaneous
 /dbtoken
+**/.env
+**/.env.local
+**/bin/
+**/obj/
 *.class
 *.log
 *.pyc
@@ -46,3 +50,4 @@ app.*.map.json
 
 # FVM Version Cache
 .fvm/
+/backend/.vs

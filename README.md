@@ -2,31 +2,32 @@
 
 This is the new Flutter repository for our four-person university project. Open **`C:\Users\Med\Documents\Connectly-v2`** in VS Code. The older project in `C:\Users\Med\Documents\Connectly` is separate.
 
-The `main` branch is the shared baseline. It has a Home screen, navigation, theme, and empty module entry points. Login, posts, maps, messaging, storage, and advanced features are planned work, not implemented behavior.
+The `main` branch is the shared baseline, including the authentication module developed on `auth`: registration, login, secure session restoration, account display/logout, and guest navigation. Feed, Nearby, and Chats remain starting screens; their data flows and advanced features are planned work.
 
-The first tier uses **local SQLite and Hive**, with Flutter repositories accessing storage directly on the phone. SQLite holds application records; Hive holds preferences, drafts, and local session state. The first tier has no backend API dependency. Shared cloud data and APIs are later-tier work; see [WHATS_NEXT.md](WHATS_NEXT.md) for the plan.
+The storage direction is **Hive on the device and Turso for shared cloud records**. Authentication uses the **ASP.NET Core .NET 10 API** in [backend/README.md](backend/README.md). Hive stores the optional remembered email; platform secure storage protects the user session. See [WHATS_NEXT.md](WHATS_NEXT.md) for the remaining work.
+
+The app opens login or restores a valid saved session. **Create account** registers a Turso account through the .NET API. Sign in to open the module tabs directly, then select **Profile** to see your account and sign out. **Continue as a guest** opens the tabs without authentication. Keep the backend running and configure the phone's USB reverse mapping as described in [backend/README.md](backend/README.md).
 
 ## Project views
 
-The flow on `main` is **Home -> Open modules -> Feed / Nearby / Chats / Profile**. Android's Back button returns from the module tabs to Home.
+The flow is **Login / Create account / Continue as a guest -> Feed / Nearby / Chats / Profile**. The welcome screen and its **Open modules** step have been removed.
 
 | View | What it shows now | Main source file |
 | --- | --- | --- |
-| Home | Connectly welcome text and the **Open modules** button. | `lib/app/home_screen.dart` |
 | Module navigation | Four bottom tabs. Switching tabs preserves their state. | `lib/app/app_shell.dart` |
 | Feed | An empty starting point for posts. | `lib/features/feed/module_entry.dart` |
 | Nearby | An empty starting point for discovery and a future map. | `lib/features/discovery/module_entry.dart` |
 | Chats | An empty starting point for conversations. | `lib/features/messaging/module_entry.dart` |
-| Profile | An empty starting point for accounts and profile. | `lib/features/auth/module_entry.dart` |
+| Profile | Account name/email and logout, or a guest sign-in action. | `lib/features/auth/presentation/profile_screen.dart` |
 
-The four empty tabs on `main` use one shared `ModulePlaceholderScreen`. Each feature branch replaces **only its own tab** with a starting screen in its `presentation` folder. For example, `git switch discovery` shows the Nearby starting screen while the other tabs remain placeholders. These starting screens do not yet load stored application records. See [UI_GUIDE.md](UI_GUIDE.md) for the widgets and navigation behavior.
+The original four empty tabs used one shared `ModulePlaceholderScreen`; Profile now has working account behavior. Each feature branch owns its own module entry and presentation files. Branches that have not merged the updated `main` may still show the original Home and placeholders. Feed, Nearby, and Chats starting screens do not yet load stored application records. See [UI_GUIDE.md](UI_GUIDE.md) for the widgets and navigation behavior.
 
 ## Branches
 
 | Branch | Owner's starting work |
 | --- | --- |
-| `main` | Shared Home, theme, navigation, and module entry contracts. |
-| `auth` | Profile screen; future sign-up, login, and face verification with liveness. |
+| `main` | Shared authentication, theme, navigation, and module entry contracts. |
+| `auth` | Working registration, login, profile display, secure sessions, and logout; profile editing and face verification remain planned. |
 | `feed` | Feed screen; future posts and personalized ranking. |
 | `discovery` | Nearby screen; future map and live proximity matching. |
 | `messaging` | Chats screen; future conversations and translated voice messages. |
@@ -71,3 +72,5 @@ git switch main
 Flutter 3.47.7, Dart 3.13.5, the Flutter/Dart VS Code extensions, Android Studio, and Android SDK 36 are installed. `flutter doctor -v` reported no issues. `flutter analyze` and the web build passed. The Android debug app built, installed, and launched on the connected Android 11 phone. The first build may take longer while Gradle downloads its tools.
 
 See [SPRINT_00.md](SPRINT_00.md) for the completed baseline and [UI_GUIDE.md](UI_GUIDE.md) for each UI component.
+
+For the completed auth module, see [views and actions](UI_GUIDE.md#authentication-views), [functions and API flow](UI_GUIDE.md#authentication-functions), and [Hive, secure storage, and cache behavior](UI_GUIDE.md#authentication-storage-and-cache).

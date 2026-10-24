@@ -1,73 +1,64 @@
 # Next sprint
 
-## First: use the baseline
+## Current direction: Hive and Turso
 
-Flutter, Android Studio, and Android SDK are installed, and the baseline launched on a physical Android phone. Open this repository in VS Code and follow [README.md](README.md) for the exact terminal commands. The expected path is Home -> Open modules -> Feed, Nearby, Chats, and Profile tabs. Each feature branch changes just its tab. The Android application ID is `com.example.connectly_v2`.
+Use **Hive on the device** for local preferences, drafts, and cached data, and **Turso `connectly1`** for shared cloud records. Each feature owns its repository so its screens can use local or remote data through the same interface.
 
-Run `flutter test` on the `navigation` branch. As new screens are added, update the UI guide with their widgets, data states, and actions. The old combined preview and its design screenshots remain on `archive/sprint-0`.
+`Flutter screen -> feature repository -> Hive / authenticated backend -> Turso`
 
-## First tier: local SQLite and Hive
+Cloud credentials belong in the backend. The root `dbtoken` file is ignored by Git and supplies the local .NET API and standalone database connection test. Authentication is implemented; synchronization between Hive and Turso remains future work.
 
-**The first tier runs locally on the phone using SQLite and Hive only. It has no backend API or cloud database dependency.** The first storage implementation targets Android.
+## Completed: authentication screens and functions
 
-`Flutter screen -> feature repository -> local SQLite database / Hive boxes`
+The `auth` branch now opens with `lib/features/auth/presentation/login_screen.dart`, using the existing navy/yellow palette and the Urbanist fonts from `archive/sprint-0`.
 
-| Storage | Responsibility | Examples |
+- Email and password inputs support autofill and keyboard navigation.
+- Required fields and email formatting are validated before submission.
+- The password visibility toggle shows and hides the entered password.
+- **Remember my email** saves the email address in Hive's `auth_preferences` box when submitting or continuing as a guest. Unchecking it immediately removes the saved email. Passwords are never written to Hive.
+- The layout scrolls for smaller screens and the keyboard, and uses a two-column layout on wide displays.
+- **Continue as a guest** opens Feed / Nearby / Chats / Profile directly. Guest access does not create an authenticated session.
+- **Create account** opens registration. Sign-in and registration call the .NET 10 API, display validation/service errors, and open the module tabs after success. Profile displays the account and provides logout.
+- User session credentials are saved in platform secure storage. Startup calls the protected `/me` endpoint before restoring access. Hive's remembered email is independent of authentication.
+
+The authentication API is implemented in C# under `backend/`, using ASP.NET Core controllers and services. It hashes passwords using Identity's password hasher and stores only hashes of expiring bearer sessions in Turso. See [backend/README.md](backend/README.md) for source layout, routes, setup, and the live integration check. [UI_GUIDE.md](UI_GUIDE.md) documents each auth view/action, source functions, exact storage keys, and startup/logout/offline behavior. The project owner confirmed authentication working on the connected phone on 2026-10-24.
+
+## Storage responsibilities
+
+| Storage | Implemented now | Planned additions |
 | --- | --- | --- |
-| **SQLite** through `sqflite` | Relational application records, queried and updated with SQL. | Users, profiles, posts, likes, locations, conversations, members, messages, and attachment metadata. |
-| **Hive** | Small local preferences and temporary UI state, accessed by key. | Theme, onboarding completion, selected tab, nearby radius preference, post/message drafts, and current local user ID. |
-| **App file storage** | Media files referenced by SQLite records. | Selected images and recorded audio stored in the app's persistent directory. |
+| **Hive** | Optional remembered email in `auth_preferences` / `remembered_email`. | Theme, selected tab, nearby radius, post/message drafts, cached conversations. |
+| **Platform secure storage** | User bearer token under `connectly_auth_session`. | Any future session changes need their own lifecycle and tests. |
+| **Turso** | Shared users and seven-day session hashes accessed through the .NET API. | Profile updates, posts, likes, locations, conversations, group members, messages, transcript/translation metadata. |
+| **App files / future media storage** | No implemented media upload/cache flow. | Images, recordings, and their references in application records. |
 
-SQLite is the source of truth for application records; Hive stores preferences and drafts. See [Flutter's SQLite guide](https://docs.flutter.dev/cookbook/persistence/sqlite) and [Hive's package documentation](https://pub.dev/packages/hive).
-
-Agree on one SQLite schema, common user IDs, table ownership, and versioned migrations across the four modules. Use one shared database connection and namespaced Hive keys. Store salted password hashes for local account checks; Hive's session marker contains only the current user ID.
-
-### Shared storage structure to build
-
-```text
-lib/core/storage/
-  storage_init.dart       # Initialize SQLite and Hive before opening screens
-  app_database.dart       # Open connectly.db; manage schema and migrations
-  preferences_store.dart  # Read/write Hive settings and local session state
-```
-
-Each feature owns its repository interface and local implementation inside its feature folder, such as `FeedRepository` and `SqliteFeedRepository`. Screens call repository methods such as `createPost()` and `listPosts()`. Shared app initialization supplies the repositories. A later cloud implementation can use the same interfaces; moving or synchronizing existing data will be separate work.
-
-### What the first-tier demonstration must show
-
-- Create and switch between multiple test accounts on one phone.
-- Create, read, update, and delete module records in SQLite; save preferences and drafts in Hive.
-- Close and reopen the app, then verify that records, settings, and local session state are restored.
-- Demonstrate local workflows in airplane mode, including empty, loading, success, and storage-error states.
-- Use seeded accounts, stored locations, and local conversations to demonstrate interactions on one device. Each phone has its own records; communication between real devices belongs to a later tier.
+Agree on common user IDs, model fields, repository contracts, Hive box names/keys, and versioned cloud schema migrations. Keep secrets out of Flutter assets and source control. Session persistence is implemented separately from Hive. The user profile and tab state live in memory; broader persistent caching, invalidation, and synchronization remain planned. Startup requires a successful `/me` check to restore an account; remembered email does not grant offline authenticated access.
 
 ## Four member modules
 
-Each member builds the local core module on their branch first. The last column preserves the advanced feature target to develop after the local core. Model processing and any future network services need a separate implementation decision; the first tier uses local repository methods.
+The core and advanced features below are targets. The current implementation includes registration/login, Hive email preferences, secure session persistence/restoration, account display/logout, guest navigation, and the other module starting screens. Profile editing and advanced authentication remain planned work.
 
-| Member | Core module: first tier | Advanced feature and what must actually work |
+| Member | Core module to build | Advanced feature and required demonstration |
 | --- | --- | --- |
-| **1 — Accounts & profile** (`auth`) | Local sign up, login, logout, and profile editing. SQLite: `users`, `profiles`. Hive: current local user ID and onboarding state. Demonstrate validation, duplicate-account rejection, wrong-password rejection, profile updates, and session restoration after restart. | **Face verification with a liveness challenge.** Enroll a face, persist its enrollment data in a future `face_enrollments` table, ask for a random action such as turning the head, and compare a new capture with the enrolled user. Demonstrate success, rejection of another person, rejection of a still photo, and password fallback. [Google's ML Kit documentation](https://developers.google.com/ml-kit/vision/face-detection) explains that detecting a face alone does not identify a person. Scope this as a university prototype. |
-| **2 — Posts & feed** (`feed`) | Create, list, edit, and delete local posts; attach locally saved images; like and unlike posts using local test accounts. SQLite: `posts`, `post_media`, `likes`, `interactions`. Hive: unfinished post drafts. Demonstrate ownership of edit/delete actions and persistence after restart. | **Semantic recommendation engine.** Generate embeddings for post content and user interests, store vectors in SQLite, and combine cosine similarity with interaction history and freshness. Add `post_embeddings` and shared `user_interests` data when implementing this feature. Demonstrate different ranked feeds for two local test users, compared with chronological order. |
-| **3 — Nearby discovery** (`discovery`) | Display local user cards and stored coordinates on an offline map. Edit local location and visibility settings; filter users by distance. SQLite: `user_locations`, linked to profiles. Hive: selected radius and map-view preferences. Demonstrate distance filtering using seeded coordinates without a network request. | **Live proximity matching.** Change simulated user coordinates, recalculate distances, apply shared-interest and visibility rules, and update matches as users enter or leave the radius. Demonstrate the map and cards updating as two test users move. Real location sharing between phones belongs to a later tier. |
-| **4 — Group messaging** (`messaging`) | Create local conversations and groups; add/remove members; save, view, and delete messages and local attachments. SQLite: `conversations`, `conversation_members`, `messages`, `attachments`. Hive: message drafts. Switch local accounts to demonstrate conversation history and membership rules on one phone. | **Multilingual voice messages.** Record audio, generate an original-language transcript, translate it into the recipient's selected language, and store searchable text alongside the audio file reference. Add `message_translations` when implementing translation. Demonstrate audio playback, original text, translation, and search. [Whisper's documentation](https://github.com/openai/whisper) covers multilingual transcription and speech translation into English; other target languages need a separate translation step. |
+| **1 — Accounts & profile** (`auth`) | Login, sign-up, logout, account display, and secure session restoration are implemented. Next: profile editing and password recovery. Turso holds accounts/sessions; Hive remembers the optional email. | **Face verification with a liveness challenge.** Enroll a face, request a random action, compare a new capture with the enrolled user, and demonstrate success, another-person rejection, still-photo rejection, and password fallback. [ML Kit face detection](https://developers.google.com/ml-kit/vision/face-detection) alone does not identify people. Scope this as a university prototype. |
+| **2 — Posts & feed** (`feed`) | Create/list/edit/delete posts, images, and likes. Shared records go to Turso through the backend; Hive holds drafts and optional cached posts. | **Semantic recommendations.** Use embeddings, interactions, and freshness to rank posts. Demonstrate different feeds for two users and compare with chronological order. Decide where model processing runs before implementation. |
+| **3 — Nearby discovery** (`discovery`) | Map, user cards, location/visibility settings, and radius filtering. The backend supplies shared user locations; Hive stores local display preferences. | **Live proximity matching.** Apply radius, shared-interest, and visibility rules as locations change. Demonstrate users entering and leaving the radius, with map and cards updating. |
+| **4 — Group messaging** (`messaging`) | Conversations, groups, messages, and attachments shared through the backend. Hive stores drafts and optional local history caches. | **Multilingual voice messages.** Record audio, produce the original transcript and a recipient-language translation, then search text within authorized conversations. Demonstrate audio playback, both text versions, and a search result. [Whisper](https://github.com/openai/whisper) supports transcription and translation into English; other translation targets need a separate step. |
 
-## Shared navigation work
+## Next implementation order
 
-Use the `navigation` branch for route ownership and the local sign-in gate. Restore the selected tab and local session using Hive. Demonstrate that logging out clears the local session and protects account screens. For deep links, demonstrate opening a protected local conversation, signing in, and reaching the correct Chats tab and conversation. Run the navigation tests before merging this work.
+1. Add profile editing and its protected update endpoint to the .NET API.
+2. Add password recovery and define its verification/delivery flow.
+3. Agree on the other modules' models and API contracts, then implement their repositories, C# controllers/services, and screens.
+4. Deploy the API to an HTTPS host when testing beyond the connected PC/phone setup.
+5. Add caching/synchronization rules where offline access is needed, and implement the advanced feature demonstrations. Keep the documented phone auth regression checks when changing account behavior.
 
-## First-tier implementation order
+## Shared navigation and branch workflow
 
-1. Agree on the SQLite schema, repository contracts, and Hive box names/keys across the team.
-2. Add local storage dependencies and shared initialization, database migrations, and the preferences store.
-3. Implement local accounts/profile and the local session gate.
-4. Implement the feed, nearby discovery, and messaging repositories and screens using local records.
-5. Verify CRUD, account-specific visibility, restart persistence, and airplane-mode operation on the phone. Update [UI_GUIDE.md](UI_GUIDE.md) as screens are completed.
+The `auth` branch owns the login screen, account/profile screens, and related state/data files. Shared app entry changes are needed to display login before the module tabs. Other feature branches replace their own module entry point. Keep navigation tests aligned with the chosen signed-out, guest, and authenticated flows.
 
-## Later tier: shared data and APIs
+Update [UI_GUIDE.md](UI_GUIDE.md) when screens or actions change. Review UI, data handling, and relevant tests before merging a feature into `main`. Read [BRANCHES.md](BRANCHES.md) before switching or merging branches.
 
-Turso `connectly1` is available for a later cloud implementation. Its standalone write/read check passed on 2026-10-19, and `connectly_connection_tests` contains `Connectly test write successful`. The PowerShell check is in `tool/test_turso_connection.ps1`; its root `dbtoken` file is ignored by Git.
+## Verified cloud preparation
 
-When communication between real devices is introduced, define backend endpoints, authentication, shared database access, and synchronization. Replace the appropriate local repository implementations with remote implementations through app initialization. Keep cloud credentials in the backend.
-
-Keep each new screen, its state management, and repository inside its feature folder. Review local behavior and persistence before merging a module into `main`.
+Turso `connectly1` was created and its standalone write/read test passed on 2026-10-19. The `connectly_connection_tests` table contains `Connectly test write successful`. To repeat that database check, run `.\tool\test_turso_connection.ps1`. The .NET authentication integration check also passed against Turso on 2026-10-24; run `.\backend\tests\Test-Authentication.ps1` with the API running to repeat it.
