@@ -29,27 +29,33 @@ The authentication API is implemented in C# under `backend/`, using ASP.NET Core
 
 The .NET API enforces authorship, visibility, and one reaction per account/post. Feed/People are held in memory only; returning from People or pulling down refreshes the timeline. See [lib/features/feed/README.md](lib/features/feed/README.md) for behavior and verification. All 31 Flutter tests and the live feed integration check passed on 2026-10-24.
 
+## Completed: direct and group messaging
+
+Messaging now supports conversation creation with friends/followed people, direct-chat deduplication, group text chat, shared history, unread counts, active-screen polling, member lists, and safe pending-message retries. Hive saves drafts and pending sends per account/conversation; server history remains in Turso. The owner confirmed it working on the phone on 2026-10-24. All 48 Flutter tests, analysis, the .NET build, and the live messaging check passed. See [messaging documentation](lib/features/messaging/README.md).
+
+Next messaging work: attachments, group membership management, voice transcription/translation, message search, and notifications. These remain planned.
+
 ## Storage responsibilities
 
 | Storage | Implemented now | Planned additions |
 | --- | --- | --- |
-| **Hive** | Optional remembered email in `auth_preferences` / `remembered_email`. | Theme, selected tab, nearby radius, post/message drafts, cached conversations. |
+| **Hive** | Remembered email in `auth_preferences`; account/conversation-scoped drafts and pending sends in `messaging_local`. | Theme, selected tab, nearby radius, post drafts, cached server history. |
 | **Platform secure storage** | User bearer token under `connectly_auth_session`. | Any future session changes need their own lifecycle and tests. |
-| **Turso** | Shared users and seven-day session hashes; on `feed`, posts, follows, friendships, and reactions through the .NET API. | Profile updates, locations, conversations, group members, messages, transcript/translation metadata. |
+| **Turso** | Users/session hashes, posts, follows, friendships, reactions, conversations, memberships/read cursors, and messages through the .NET API. | Profile updates, locations, transcript/translation metadata. |
 | **App files / future media storage** | No implemented media upload/cache flow. | Images, recordings, and their references in application records. |
 
 Agree on common user IDs, model fields, repository contracts, Hive box names/keys, and versioned cloud schema migrations. Keep secrets out of Flutter assets and source control. Session persistence is implemented separately from Hive. The user profile and tab state live in memory; broader persistent caching, invalidation, and synchronization remain planned. Startup requires a successful `/me` check to restore an account; remembered email does not grant offline authenticated access.
 
 ## Four member modules
 
-The core and advanced features below are targets. The current implementation includes registration/login, Hive email preferences, secure session persistence/restoration, account display/logout, guest navigation, and the other module starting screens. Profile editing and advanced authentication remain planned work.
+The table distinguishes implemented core features from remaining targets. Authentication, feed/connections/reactions, and direct/group text messaging work; discovery and advanced demonstrations remain planned.
 
 | Member | Core module to build | Advanced feature and required demonstration |
 | --- | --- | --- |
 | **1 — Accounts & profile** (`auth`) | Login, sign-up, logout, account display, and secure session restoration are implemented. Next: profile editing and password recovery. Turso holds accounts/sessions; Hive remembers the optional email. | **Face verification with a liveness challenge.** Enroll a face, request a random action, compare a new capture with the enrolled user, and demonstrate success, another-person rejection, still-photo rejection, and password fallback. [ML Kit face detection](https://developers.google.com/ml-kit/vision/face-detection) alone does not identify people. Scope this as a university prototype. |
 | **2 — Posts & feed** (`feed`) | Text creation/listing/deletion, friends/following, requests, and reactions are implemented on `feed`. Next: post editing, images, persistent drafts/cache. Comments remain for later. | **Semantic recommendations.** Use embeddings, interactions, and freshness to rank posts. Demonstrate different feeds for two users and compare with chronological order. Decide where model processing runs before implementation. |
 | **3 — Nearby discovery** (`discovery`) | Map, user cards, location/visibility settings, and radius filtering. The backend supplies shared user locations; Hive stores local display preferences. | **Live proximity matching.** Apply radius, shared-interest, and visibility rules as locations change. Demonstrate users entering and leaving the radius, with map and cards updating. |
-| **4 — Group messaging** (`messaging`) | Conversations, groups, messages, and attachments shared through the backend. Hive stores drafts and optional local history caches. | **Multilingual voice messages.** Record audio, produce the original transcript and a recipient-language translation, then search text within authorized conversations. Demonstrate audio playback, both text versions, and a search result. [Whisper](https://github.com/openai/whisper) supports transcription and translation into English; other translation targets need a separate step. |
+| **4 — Group messaging** (`messaging`) | Direct/group text conversations, shared history, unread counts, polling, Hive drafts/pending retries are implemented. Attachments, member management, and persistent history caches remain planned. | **Multilingual voice messages.** Record audio, produce the original transcript and a recipient-language translation, then search text within authorized conversations. Demonstrate audio playback, both text versions, and a search result. [Whisper](https://github.com/openai/whisper) supports transcription and translation into English; other translation targets need a separate step. |
 
 ## Next implementation order
 

@@ -2,13 +2,15 @@
 
 This is the new Flutter repository for our four-person university project. Open **`C:\Users\Med\Documents\Connectly-v2`** in VS Code. The older project in `C:\Users\Med\Documents\Connectly` is separate.
 
-The `main` branch is the shared baseline, including authentication and the feed: registration, login, secure sessions, account display/logout, guest navigation, text posts, connections, and reactions. Nearby and Chats remain starting screens; their data flows and advanced features are planned work.
+The `main` branch is the shared baseline, including authentication, feed, and messaging: registration/login, secure sessions, account display/logout, guest navigation, text posts, connections/reactions, and direct/group chats. Nearby and the advanced features remain planned work.
 
-The storage direction is **Hive on the device and Turso for shared cloud records**. Authentication uses the **ASP.NET Core .NET 10 API** in [backend/README.md](backend/README.md). Hive stores the optional remembered email; platform secure storage protects the user session. See [WHATS_NEXT.md](WHATS_NEXT.md) for the remaining work.
+The storage direction is **Hive on the device and Turso for shared cloud records**. The app uses the **ASP.NET Core .NET 10 API** in [backend/README.md](backend/README.md). Hive stores remembered email and account-scoped messaging drafts/pending sends; platform secure storage protects the user session. See [WHATS_NEXT.md](WHATS_NEXT.md) for the remaining work.
 
 The app opens login or restores a valid saved session. **Create account** registers a Turso account through the .NET API. Sign in to open the module tabs directly, then select **Profile** to see your account and sign out. **Continue as a guest** opens the tabs without authentication. Keep the backend running and configure the phone's USB reverse mapping as described in [backend/README.md](backend/README.md).
 
 The feed module adds real text posts, friends/following feeds, friend requests, and four reactions. See the [feed module guide](lib/features/feed/README.md) and restart the updated .NET API before testing its endpoints. Comments are deferred.
+
+Chats supports direct/group text conversations, shared history, unread counts, polling, saved drafts, and safe retries. See the [messaging guide](lib/features/messaging/README.md). The owner confirmed it working on the phone on 2026-10-24.
 
 ## Project views
 
@@ -19,20 +21,20 @@ The flow is **Login / Create account / Continue as a guest -> Feed / Nearby / Ch
 | Module navigation | Four bottom tabs. Switching tabs preserves their state. | `lib/app/app_shell.dart` |
 | Feed | Text posts, connection filters, reactions, and People. | `lib/features/feed/presentation/feed_screen.dart` |
 | Nearby | An empty starting point for discovery and a future map. | `lib/features/discovery/module_entry.dart` |
-| Chats | An empty starting point for conversations. | `lib/features/messaging/module_entry.dart` |
+| Chats | Direct/group conversations, unread counts, shared text messages, and saved drafts/retries. | `lib/features/messaging/presentation/messages_screen.dart` |
 | Profile | Account name/email and logout, or a guest sign-in action. | `lib/features/auth/presentation/profile_screen.dart` |
 
-The original four empty tabs used one shared `ModulePlaceholderScreen`; Profile and Feed now load real account and application data. Each feature branch owns its own module entry and presentation files. Branches that have not merged the updated `main` may still show the original Home and placeholders. Nearby and Chats do not yet load stored application records. See [UI_GUIDE.md](UI_GUIDE.md) for the widgets and navigation behavior.
+Profile, Feed, and Chats now load real account and application data; Nearby remains a starting view. Each feature branch owns its module entry and presentation files. Branches that have not merged the updated `main` may still show earlier screens. See [UI_GUIDE.md](UI_GUIDE.md) for widgets and navigation behavior.
 
 ## Branches
 
 | Branch | Owner's starting work |
 | --- | --- |
-| `main` | Shared authentication, feed, connections, theme, navigation, and module entry contracts. |
+| `main` | Shared authentication, feed, connections, messaging, theme, navigation, and module entry contracts. |
 | `auth` | Working registration, login, profile display, secure sessions, and logout; profile editing and face verification remain planned. |
 | `feed` | Text posts, friends/following feeds, friend requests, and reactions; uploads, comments, and personalized ranking remain planned. |
 | `discovery` | Nearby screen; future map and live proximity matching. |
-| `messaging` | Chats screen; future conversations and translated voice messages. |
+| `messaging` | Direct/group text chats, unread counts, shared history, saved drafts/retries; attachments and translated voice messages remain planned. |
 | `navigation` | Shared navigation test and future routing work. |
 | `archive/sprint-0` | Earlier combined preview and supplied design screenshots. |
 

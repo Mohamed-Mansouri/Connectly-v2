@@ -29,7 +29,7 @@ The `feed` branch includes `main`'s working authentication. `module_entry.dart` 
 
 Turso persists posts, connections, and reactions across devices. The server determines authorship from the authenticated account and checks connections before returning or reacting to a post. The People directory exposes names and IDs, without emails or password fields.
 
-Feed pages and connection results are held in memory only. Refresh failures can leave already loaded posts visible with an error; restarting offline does not restore a cached feed. Hive still contains only the auth email preference. Composer text survives a failed publication while the sheet is open; closing it or restarting discards the draft. There is no live push or background sync: pull down to fetch other people's new posts, reactions, and requests. Returning from People refreshes the feed.
+Feed pages and connection results are held in memory only. Refresh failures can leave already loaded posts visible with an error; restarting offline does not restore a cached feed. Hive has auth email preferences and messaging drafts/pending sends, but no feed cache. Post composer text survives a failed publication while the sheet is open; closing it or restarting discards the draft. There is no live push or background feed sync: pull down to fetch other people's new posts, reactions, and requests. Returning from People refreshes the feed.
 
 ## Verification and remaining work
 

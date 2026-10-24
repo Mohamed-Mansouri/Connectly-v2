@@ -25,7 +25,10 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(index: _selectedIndex, children: _screens),
+      body: IndexedStack(index: _selectedIndex, children: [
+        for (var index = 0; index < _screens.length; index++)
+          TickerMode(enabled: index == _selectedIndex, child: _screens[index]),
+      ]),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) {
@@ -33,9 +36,12 @@ class _AppShellState extends State<AppShell> {
         },
         destinations: const [
           NavigationDestination(icon: Icon(Icons.home_outlined), label: 'Feed'),
-          NavigationDestination(icon: Icon(Icons.place_outlined), label: 'Nearby'),
-          NavigationDestination(icon: Icon(Icons.chat_bubble_outline), label: 'Chats'),
-          NavigationDestination(icon: Icon(Icons.person_outline), label: 'Profile'),
+          NavigationDestination(
+              icon: Icon(Icons.place_outlined), label: 'Nearby'),
+          NavigationDestination(
+              icon: Icon(Icons.chat_bubble_outline), label: 'Chats'),
+          NavigationDestination(
+              icon: Icon(Icons.person_outline), label: 'Profile'),
         ],
       ),
     );

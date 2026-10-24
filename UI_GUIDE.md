@@ -1,6 +1,6 @@
 # UI and authentication guide
 
-This guide describes the authentication and feed modules developed on `auth` and `feed` and integrated into `main`. The project owner confirmed authentication working on the connected phone on **2026-10-24**. Login, registration, session restoration, and guests enter the module tabs directly; the welcome screen has been removed.
+This guide describes authentication, feed, and messaging developed on their feature branches and integrated into `main`. The project owner confirmed authentication and messaging working on the connected phone on **2026-10-24**. Login, registration, session restoration, and guests enter the module tabs directly; the welcome screen has been removed.
 
 ## Authentication views
 
@@ -11,7 +11,7 @@ This guide describes the authentication and feed modules developed on `auth` and
 | Create account | Name, email, password, confirmation, visibility toggle, submit, and Back. | Registration also signs in and opens Feed. Errors appear in the form. Submission disables controls and prevents Back until the request finishes. |
 | Profile: account | Avatar icon, current user's name/email, and **Sign out**. | Sign out returns to Login. A device storage failure shows a snackbar and keeps the account signed in. Profile editing remains planned. |
 | Profile: guest | Guest explanation and **Sign in**. | Sign in returns to Login. Guest access creates no account or session. Android Back from the guest shell also returns to Login. |
-| Module tabs | Feed, Nearby, Chats, and Profile. | Feed opens first. `IndexedStack` preserves tab state while switching in the current shell. Feed, Nearby, and Chats remain starting screens on this branch. |
+| Module tabs | Feed, Nearby, Chats, and Profile. | Feed opens first. `IndexedStack` preserves tab state; `TickerMode` identifies the visible tab so Chats can pause polling. Nearby remains a starting screen. |
 
 ### Layout and validation
 
@@ -63,7 +63,7 @@ The backend trims/lowercases emails and uses ASP.NET Core Identity's salted pass
 
 ## Authentication storage and cache
 
-These are the stores implemented today. Hive does not yet contain profile, feed, or chat caches.
+The table below describes authentication storage. Messaging separately uses Hive for drafts and pending sends, as documented below; profile, feed, and server chat-history caches are not implemented.
 
 | Store | Data / key | Write and read behavior | Lifetime / clearing |
 | --- | --- | --- | --- |
@@ -121,13 +121,28 @@ The `feed` branch includes the authentication baseline. Its Feed tab now loads r
 
 Friends require recipient acceptance; follows are one-way and independent. Pending requests grant no feed access. Feed/People data and drafts are held in memory, with no Hive cache or automatic refresh. Other users' changes appear on refresh. Startup authentication still requires `/me`, as documented above. Images, post editing, comments, and advanced ranking remain planned.
 
+## Messaging views
+
+| View | Actions and states |
+| --- | --- |
+| Chats | Search recent conversations, inspect preview/unread counts, pull to refresh, and start a new chat. Loading, empty, guest, and error views are explicit. |
+| New conversation | Choose direct/group, search friends/followed people, select contacts, and name groups. Validation and busy guards prevent invalid/duplicate submissions. |
+| Conversation | Read incoming/outgoing text, sender names for groups, dates/times, earlier history, and member list. Composer stays above the keyboard/system controls. Sends show progress and safe retry actions. |
+| Members | Read-only participant list with a retry state for service errors. |
+
+The active inbox polls every ten seconds; an active conversation polls every five seconds. Polling pauses behind other routes, on hidden tabs, and when the app is backgrounded. Active conversations advance the current account's unread marker. Messages are visible only to members; new chats use accepted friends or people the creator follows.
+
+Hive box `messaging_local` stores JSON drafts and pending sends under `<userId>:<conversationId>`. Drafts save after a short debounce and on leaving. Each pending send retains a stable UUID/body/timestamp before transmission; retrying uses that ID, and server uniqueness prevents duplicates. Confirmed items are removed, empty records are deleted, and restored pending messages require explicit Retry. Records remain scoped to their account after logout. If Hive cannot open, the app uses temporary memory with a notice; a subsequent local write failure retains pending text and stops that send.
+
+There is no persistent server-history cache, automatic resend on startup, push delivery, presence, or message-level read receipt. Voice, attachments, and group membership changes remain planned. The [messaging module guide](lib/features/messaging/README.md) maps the functions, storage lifecycle, and limitations. [API routes](backend/README.md#messaging) document server behavior. All 48 Flutter tests, Flutter analysis, the .NET build, and live messaging integration checks passed before the owner's phone confirmation.
+
 ## Navigation shell: `lib/app/app_shell.dart`
 
 `NavigationBar` has Feed, Nearby, Chats, and Profile destinations. `IndexedStack` keeps tab state while switching. Each destination loads one `module_entry.dart` file. A feature branch replaces its own entry's placeholder with its screen; no other feature file needs editing. The shell owns navigation only and makes no API calls.
 
 ## Empty module screen: `lib/shared/presentation/module_placeholder_screen.dart`
 
-The four tabs on the original `main` baseline show a titled `Scaffold` and an `EmptyState` with an icon and message. On `auth`, Profile is implemented as described above; the other modules remain starting views. Real loading, empty-response, and service-error states belong to each future feature implementation.
+The original baseline used `Scaffold` and `EmptyState` placeholders for all four modules. Profile, Feed, and Chats now have working implementations; Nearby remains a starting view. Each feature owns its real loading, empty-response, and service-error states.
 
 ## Shared components
 

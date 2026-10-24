@@ -107,3 +107,35 @@ Then from the repository root:
 For the default API port, pass `-ApiUrl http://127.0.0.1:8787` to the script. It checks visibility, one-way follows, pending/accepted requests, reaction replacement/removal, author-only deletion, and pagination using temporary accounts. It removes only its own generated records. Like the auth script, it uses this repository's default Turso settings and credential file.
 
 For phone testing on port 8788, reverse that port with ADB and run Flutter with `--dart-define=API_BASE_URL=http://127.0.0.1:8788`. For normal port 8787, use the existing phone setup above. Feed has no comments, media uploads, persistent client cache, background sync, or recommendation ranking yet. See the [feed module guide](../lib/features/feed/README.md).
+
+## Messaging
+
+`MessagingController`, `MessagingService`, and `MessagingModels` implement direct/group text chat. Startup migration `003_messaging.sql` creates `conversations`, `conversation_members`, and `messages`. Every endpoint requires a bearer session; conversation routes check membership and derive sender identity from that session. New conversations can include accepted friends or people the creator follows. Existing chats remain accessible to their members if connections are later removed.
+
+| Method | Route | Behavior |
+| --- | --- | --- |
+| GET | `/conversations` | Most recent 100 member conversations with title, preview, member count, and caller's unread count. |
+| GET | `/conversations/contacts?search=name` | Up to 50 eligible contacts, ID/name only. |
+| POST | `/conversations` | `{ kind, memberIds, title? }`: one other person for `direct`; 2–19 others and a 2–80-character title for `group`. Creator joins automatically. Direct pairs reopen the existing conversation. Returns 201 with `{ conversation }`. |
+| GET | `/conversations/{id}/members` | Authorized participant ID/name list. |
+| GET | `/conversations/{id}/messages` | Latest 50 messages, ascending by server sequence. `before=<sequence>` loads older history; `after=<sequence>` fetches increments, with `hasMore` for draining backlogs. Cursors cannot be combined. |
+| POST | `/conversations/{id}/messages` | `{ clientId, body }`: stable UUID and 1–4,000 trimmed characters. Returns 201 with `{ message }`. Reusing the same ID/body returns the original message; changing its body returns 409. |
+| POST | `/conversations/{id}/read` | `{ throughSequence }`: advances only the caller's read marker, bounded to existing messages in this conversation; 204. |
+
+The unique `(conversation_id, sender_id, client_id)` constraint prevents retry duplicates. Sequence cursors handle tied timestamps and concurrent senders. Nonmembers receive 404 for history, members, sends, and read operations. Conversation/member creation is transactional. Messages are text only; membership editing, attachments, and voice features are not implemented.
+
+For isolated phone/testing alongside the older APIs, run from `backend/`:
+
+```powershell
+dotnet run --no-launch-profile --urls http://127.0.0.1:8789
+```
+
+From the repository root:
+
+```powershell
+.\backend\tests\Test-Messaging.ps1
+& "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" -s ae64b3ca reverse tcp:8789 tcp:8789
+flutter run -d ae64b3ca --dart-define=API_BASE_URL=http://127.0.0.1:8789
+```
+
+The test script creates temporary accounts/connections/conversations, checks access, deduplication, unread markers, groups, and pagination, and cleans up only those records. It uses the default Turso configuration and ignored root credential file. Pass `-ApiUrl http://127.0.0.1:8787` to test the normal port instead. The app polls active conversations every five seconds and the visible inbox every ten seconds; no push server is required. See [messaging storage and UI](../lib/features/messaging/README.md).
