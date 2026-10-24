@@ -7,7 +7,7 @@ Run these commands inside this repository. Git branches share one working folder
     git switch auth
     git log --oneline --decorate --graph --all
 
-The feature branches were created as siblings from `main`, not a chain. Each branch owns its module entry and feature files. After authentication is merged into `main`, merge the updated `main` into the remaining feature branches to bring in the shared login, session handling, and Profile. Until then, those branches may still show the original Home and placeholders.
+The feature branches were created as siblings from `main`, not a chain. Each branch owns its module entry and feature files. Authentication and feed work are integrated into `main`; merge the updated `main` into the remaining feature branches to bring in login, secure sessions, Profile, posts, and connections. Until then, those branches may still show the original Home and placeholders.
 
 | Branch | Entry file owned by that branch | Initial screen |
 | --- | --- | --- |

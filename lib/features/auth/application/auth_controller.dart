@@ -17,6 +17,8 @@ class AuthController extends ChangeNotifier {
   String? _startupMessage;
 
   AuthUser? get user => _user;
+  // For authenticated feature repositories; never persist this token in Hive.
+  String? get sessionToken => _token;
   bool get restoring => _restoring;
   String? get startupMessage => _startupMessage;
 

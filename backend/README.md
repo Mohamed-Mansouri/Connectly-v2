@@ -25,7 +25,7 @@ dotnet build
 dotnet run --no-launch-profile
 ```
 
-The API listens on `http://127.0.0.1:8787`. Startup applies the idempotent auth migration to Turso. `appsettings.json` contains the database URL and the path `../dbtoken`; the credential itself stays in that ignored root file.
+The API listens on `http://127.0.0.1:8787`. Startup applies the idempotent SQL files in `migrations/` in filename order. `appsettings.json` contains the database URL and the path `../dbtoken`; the credential itself stays in that ignored root file.
 
 Configuration can be overridden through .NET environment variables or user secrets:
 
@@ -74,3 +74,36 @@ With the API running, from the repository root:
 ```
 
 The script tests real API/database behavior using a unique generated account, including duplicate registration, incorrect credentials, password hashing, profile authorization, transaction rollback, logout revocation, and session expiry. It removes only its generated account and sessions, and never prints passwords or tokens. It uses the default Turso settings and root credential file; adapt it before testing a differently configured database.
+
+## Feed and connections on `feed`
+
+`Controllers/FeedController.cs`, `Services/FeedService.cs`, and `Models/FeedModels.cs` implement the feed. Migration `002_feed.sql` adds posts, follows, friendships, and reactions. Restart the API after changing to this branch so the new controllers are loaded.
+
+All routes below require a valid bearer session. Responses never expose account emails/passwords. Server-side feed visibility is the current user's own posts plus accepted friends and/or authors they follow; pending requests and being followed do not grant access.
+
+| Method | Route | Behavior |
+| --- | --- | --- |
+| GET | `/feed?scope=connections` | Newest first; `scope` can also be `friends` or `following`. Own posts appear in every scope. Returns `posts` and `nextCursor`; pass `cursor` for the next 20 posts. |
+| POST | `/posts` | `{ body }`, 1–3,000 trimmed characters; author comes from the session. Returns 201 with `{ post }`. |
+| DELETE | `/posts/{id}` | Deletes only a post owned by the caller and its reactions; idempotent 204. |
+| PUT | `/posts/{id}/reaction` | `{ kind }`: `like`, `love`, `celebrate`, or `insightful`. Upserts one reaction per caller/post; returns updated `{ post }`. |
+| DELETE | `/posts/{id}/reaction` | Removes only the caller's reaction; returns updated `{ post }`. |
+| GET | `/people?search=name&requests=false` | Up to 50 matching people, excluding self; returns ID, name, `isFollowing`, and `friendship` (`none`, `incoming`, `outgoing`, `friends`). `requests=true` selects pending requests. |
+| PUT / DELETE | `/people/{id}/follow` | Follow or unfollow one way, independently of friendship; 204. |
+| PUT | `/people/{id}/friendship` | `{ action }`: `request`, `accept`, or `remove`. Only the recipient can accept a pending request. Remove cancels, declines, or unfriends; 204. |
+
+For an isolated check alongside the existing API, run from `backend/`:
+
+```powershell
+dotnet run --no-launch-profile --urls http://127.0.0.1:8788
+```
+
+Then from the repository root:
+
+```powershell
+.\backend\tests\Test-Feed.ps1
+```
+
+For the default API port, pass `-ApiUrl http://127.0.0.1:8787` to the script. It checks visibility, one-way follows, pending/accepted requests, reaction replacement/removal, author-only deletion, and pagination using temporary accounts. It removes only its own generated records. Like the auth script, it uses this repository's default Turso settings and credential file.
+
+For phone testing on port 8788, reverse that port with ADB and run Flutter with `--dart-define=API_BASE_URL=http://127.0.0.1:8788`. For normal port 8787, use the existing phone setup above. Feed has no comments, media uploads, persistent client cache, background sync, or recommendation ranking yet. See the [feed module guide](../lib/features/feed/README.md).

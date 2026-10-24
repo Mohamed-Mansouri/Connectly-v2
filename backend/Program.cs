@@ -17,6 +17,7 @@ builder.Services.AddControllers().ConfigureApiBehaviorOptions(options =>
 builder.Services.AddHttpClient("Turso", client => client.Timeout = TimeSpan.FromSeconds(20));
 builder.Services.AddSingleton<TursoDatabase>();
 builder.Services.AddSingleton<AuthService>();
+builder.Services.AddSingleton<FeedService>();
 builder.Services.AddAuthentication(SessionAuthenticationHandler.SchemeName)
     .AddScheme<AuthenticationSchemeOptions, SessionAuthenticationHandler>(
         SessionAuthenticationHandler.SchemeName, _ => { });
