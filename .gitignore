@@ -1,4 +1,5 @@
 # Miscellaneous
+/dbtoken
 *.class
 *.log
 *.pyc

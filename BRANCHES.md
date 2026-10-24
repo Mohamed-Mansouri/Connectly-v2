@@ -19,7 +19,7 @@ The feature branches are siblings from `main`, not a chain. For example, `auth` 
 
 To see only one branch's work, switch to it and run `git diff main...HEAD`. To return to the clean baseline, run `git switch main`. Do not add unfinished module work directly to `main`.
 
-When a module is ready, review its UI, API endpoints, and tests, then merge it into `main`. For example:
+For the first tier, each module uses local SQLite and Hive through its Flutter repositories. Coordinate shared schema migrations and Hive keys across branches. When a module is ready, review its UI, repository behavior, local persistence, and tests, then merge it into `main`. For example:
 
     git switch main
     git merge --no-ff auth

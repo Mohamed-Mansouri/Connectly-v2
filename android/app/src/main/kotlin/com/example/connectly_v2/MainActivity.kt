@@ -1,4 +1,4 @@
-package com.example.flutter_full_course
+package com.example.connectly_v2
 
 import io.flutter.embedding.android.FlutterActivity
 
