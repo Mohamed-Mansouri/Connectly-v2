@@ -1,19 +1,64 @@
 # Next sprint
 
-## First: run the baseline
+## Current direction: Hive and Turso
 
-Install Flutter, open this repository folder, and run `flutter doctor`, `flutter pub get`, `flutter analyze`, `flutter test`, and `flutter run -d chrome`. The expected path is Home -> Open modules -> Feed, Nearby, Chats, and Profile tabs. Each feature branch changes just its tab. Give v2 a separate Android application ID before Android testing beside the original app.
+Use **Hive on the device** for local preferences, drafts, and cached data, and **Turso `connectly1`** for shared cloud records. Each feature owns its repository so its screens can use local or remote data through the same interface.
 
-## Shared backend decision
+`Flutter screen -> feature repository -> Hive / authenticated backend -> Turso`
 
-Choose one backend and database, a common user ID, token format, error response, and API base URL. Each member owns their endpoints and Flutter API client inside their module. Agree on request and response JSON before implementing cross-module flows.
+Cloud credentials belong in the backend. The root `dbtoken` file is ignored by Git and supplies the local .NET API and standalone database connection test. Authentication is implemented; synchronization between Hive and Turso remains future work.
 
-| Branch | First UI and API slice | Advanced functionality to demonstrate |
+## Completed: authentication screens and functions
+
+The `auth` branch now opens with `lib/features/auth/presentation/login_screen.dart`, using the existing navy/yellow palette and the Urbanist fonts from `archive/sprint-0`.
+
+- Email and password inputs support autofill and keyboard navigation.
+- Required fields and email formatting are validated before submission.
+- The password visibility toggle shows and hides the entered password.
+- **Remember my email** saves the email address in Hive's `auth_preferences` box when submitting or continuing as a guest. Unchecking it immediately removes the saved email. Passwords are never written to Hive.
+- The layout scrolls for smaller screens and the keyboard, and uses a two-column layout on wide displays.
+- **Continue as a guest** opens Feed / Nearby / Chats / Profile directly. Guest access does not create an authenticated session.
+- **Create account** opens registration. Sign-in and registration call the .NET 10 API, display validation/service errors, and open the module tabs after success. Profile displays the account and provides logout.
+- User session credentials are saved in platform secure storage. Startup calls the protected `/me` endpoint before restoring access. Hive's remembered email is independent of authentication.
+
+The authentication API is implemented in C# under `backend/`, using ASP.NET Core controllers and services. It hashes passwords using Identity's password hasher and stores only hashes of expiring bearer sessions in Turso. See [backend/README.md](backend/README.md) for source layout, routes, setup, and the live integration check. [UI_GUIDE.md](UI_GUIDE.md) documents each auth view/action, source functions, exact storage keys, and startup/logout/offline behavior. The project owner confirmed authentication working on the connected phone on 2026-10-24.
+
+## Storage responsibilities
+
+| Storage | Implemented now | Planned additions |
 | --- | --- | --- |
-| `auth` | Sign up, login, profile; `POST /auth/signup`, `POST /auth/login`, `GET/PATCH /me` | Face verification with a random liveness challenge, rejection case, and password fallback. |
-| `feed` | List and create posts; `GET/POST /posts`, `POST /uploads` | Personalized ranking based on content embeddings and interactions, compared with newest-first results. |
-| `discovery` | Nearby map and user cards; `PUT /me/location`, `GET /users/nearby` | Live proximity matching as test users cross a radius boundary. |
-| `messaging` | Conversations and group chat; `GET/POST /conversations`, `GET/POST /conversations/{id}/messages` | Voice message recording, transcription, translation, and searchable text. |
-| `navigation` | Route ownership, sign-in gate, and deep-link plan | Restore the correct tab and screen from a deep link after authentication. |
+| **Hive** | Optional remembered email in `auth_preferences` / `remembered_email`. | Theme, selected tab, nearby radius, post/message drafts, cached conversations. |
+| **Platform secure storage** | User bearer token under `connectly_auth_session`. | Any future session changes need their own lifecycle and tests. |
+| **Turso** | Shared users and seven-day session hashes accessed through the .NET API. | Profile updates, posts, likes, locations, conversations, group members, messages, transcript/translation metadata. |
+| **App files / future media storage** | No implemented media upload/cache flow. | Images, recordings, and their references in application records. |
 
-Keep each new screen, its state management, and API client within its feature folder. Update [UI_GUIDE.md](UI_GUIDE.md) when a screen changes. The original design screenshots are preserved on `archive/sprint-0`; their Nearby and Chat layouts can guide the relevant module work.
+Agree on common user IDs, model fields, repository contracts, Hive box names/keys, and versioned cloud schema migrations. Keep secrets out of Flutter assets and source control. Session persistence is implemented separately from Hive. The user profile and tab state live in memory; broader persistent caching, invalidation, and synchronization remain planned. Startup requires a successful `/me` check to restore an account; remembered email does not grant offline authenticated access.
+
+## Four member modules
+
+The core and advanced features below are targets. The current implementation includes registration/login, Hive email preferences, secure session persistence/restoration, account display/logout, guest navigation, and the other module starting screens. Profile editing and advanced authentication remain planned work.
+
+| Member | Core module to build | Advanced feature and required demonstration |
+| --- | --- | --- |
+| **1 — Accounts & profile** (`auth`) | Login, sign-up, logout, account display, and secure session restoration are implemented. Next: profile editing and password recovery. Turso holds accounts/sessions; Hive remembers the optional email. | **Face verification with a liveness challenge.** Enroll a face, request a random action, compare a new capture with the enrolled user, and demonstrate success, another-person rejection, still-photo rejection, and password fallback. [ML Kit face detection](https://developers.google.com/ml-kit/vision/face-detection) alone does not identify people. Scope this as a university prototype. |
+| **2 — Posts & feed** (`feed`) | Create/list/edit/delete posts, images, and likes. Shared records go to Turso through the backend; Hive holds drafts and optional cached posts. | **Semantic recommendations.** Use embeddings, interactions, and freshness to rank posts. Demonstrate different feeds for two users and compare with chronological order. Decide where model processing runs before implementation. |
+| **3 — Nearby discovery** (`discovery`) | Map, user cards, location/visibility settings, and radius filtering. The backend supplies shared user locations; Hive stores local display preferences. | **Live proximity matching.** Apply radius, shared-interest, and visibility rules as locations change. Demonstrate users entering and leaving the radius, with map and cards updating. |
+| **4 — Group messaging** (`messaging`) | Conversations, groups, messages, and attachments shared through the backend. Hive stores drafts and optional local history caches. | **Multilingual voice messages.** Record audio, produce the original transcript and a recipient-language translation, then search text within authorized conversations. Demonstrate audio playback, both text versions, and a search result. [Whisper](https://github.com/openai/whisper) supports transcription and translation into English; other translation targets need a separate step. |
+
+## Next implementation order
+
+1. Add profile editing and its protected update endpoint to the .NET API.
+2. Add password recovery and define its verification/delivery flow.
+3. Agree on the other modules' models and API contracts, then implement their repositories, C# controllers/services, and screens.
+4. Deploy the API to an HTTPS host when testing beyond the connected PC/phone setup.
+5. Add caching/synchronization rules where offline access is needed, and implement the advanced feature demonstrations. Keep the documented phone auth regression checks when changing account behavior.
+
+## Shared navigation and branch workflow
+
+The `auth` branch owns the login screen, account/profile screens, and related state/data files. Shared app entry changes are needed to display login before the module tabs. Other feature branches replace their own module entry point. Keep navigation tests aligned with the chosen signed-out, guest, and authenticated flows.
+
+Update [UI_GUIDE.md](UI_GUIDE.md) when screens or actions change. Review UI, data handling, and relevant tests before merging a feature into `main`. Read [BRANCHES.md](BRANCHES.md) before switching or merging branches.
+
+## Verified cloud preparation
+
+Turso `connectly1` was created and its standalone write/read test passed on 2026-10-19. The `connectly_connection_tests` table contains `Connectly test write successful`. To repeat that database check, run `.\tool\test_turso_connection.ps1`. The .NET authentication integration check also passed against Turso on 2026-10-24; run `.\backend\tests\Test-Authentication.ps1` with the API running to repeat it.

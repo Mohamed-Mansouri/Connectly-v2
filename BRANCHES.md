@@ -7,19 +7,19 @@ Run these commands inside this repository. Git branches share one working folder
     git switch auth
     git log --oneline --decorate --graph --all
 
-The feature branches are siblings from `main`, not a chain. For example, `auth` does not contain the feed screen, and `feed` does not contain the auth screen. Every branch can launch the app: its own screen replaces one placeholder; the other three placeholders remain.
+The feature branches were created as siblings from `main`, not a chain. Each branch owns its module entry and feature files. After authentication is merged into `main`, merge the updated `main` into the remaining feature branches to bring in the shared login, session handling, and Profile. Until then, those branches may still show the original Home and placeholders.
 
 | Branch | Entry file owned by that branch | Initial screen |
 | --- | --- | --- |
-| `auth` | `lib/features/auth/module_entry.dart` | Profile |
+| `auth` | `lib/features/auth/module_entry.dart` and auth presentation/data files | Login at app startup; Profile in the module tabs |
 | `feed` | `lib/features/feed/module_entry.dart` | Feed |
 | `discovery` | `lib/features/discovery/module_entry.dart` | Nearby |
 | `messaging` | `lib/features/messaging/module_entry.dart` | Chats |
 | `navigation` | Shared `lib/app` navigation and navigation tests | Home and tabs |
 
-To see only one branch's work, switch to it and run `git diff main...HEAD`. To return to the clean baseline, run `git switch main`. Do not add unfinished module work directly to `main`.
+To see a branch's changes since its common ancestor with `main`, switch to it and run `git diff main...HEAD`. After a feature is merged into `main`, that comparison no longer lists the merged feature changes. Run `git switch main` to return to the shared baseline. Do not add unfinished module work directly to `main`.
 
-When a module is ready, review its UI, API endpoints, and tests, then merge it into `main`. For example:
+Use Hive for local preferences/caches and Turso through a backend for shared data. Coordinate cloud schema migrations, repository contracts, and Hive keys across branches. The `auth` branch changes the shared entry to restore a session or display Login, then enter the module tabs directly; it removes Home. Review that integration with navigation work and use [UI_GUIDE.md](UI_GUIDE.md) for the account and cache contracts. When a module is ready, review its UI, repository behavior, persistence, and tests, then merge it into `main`. For example:
 
     git switch main
     git merge --no-ff auth
