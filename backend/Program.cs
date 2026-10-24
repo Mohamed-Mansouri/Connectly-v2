@@ -18,6 +18,7 @@ builder.Services.AddHttpClient("Turso", client => client.Timeout = TimeSpan.From
 builder.Services.AddSingleton<TursoDatabase>();
 builder.Services.AddSingleton<AuthService>();
 builder.Services.AddSingleton<FeedService>();
+builder.Services.AddSingleton<MessagingService>();
 builder.Services.AddAuthentication(SessionAuthenticationHandler.SchemeName)
     .AddScheme<AuthenticationSchemeOptions, SessionAuthenticationHandler>(
         SessionAuthenticationHandler.SchemeName, _ => { });
