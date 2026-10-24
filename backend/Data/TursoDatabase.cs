@@ -70,10 +70,13 @@ public sealed class TursoDatabase(
 
     public async Task MigrateAsync(CancellationToken ct)
     {
-        var path = Path.Combine(environment.ContentRootPath, "migrations", "001_auth.sql");
-        var sql = await File.ReadAllTextAsync(path, ct);
-        var statements = sql.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        await BatchAsync(statements.Select(statement => new SqlStatement(statement)), ct);
+        var directory = Path.Combine(environment.ContentRootPath, "migrations");
+        foreach (var path in Directory.GetFiles(directory, "*.sql").Order(StringComparer.Ordinal))
+        {
+            var sql = await File.ReadAllTextAsync(path, ct);
+            var statements = sql.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            await BatchAsync(statements.Select(statement => new SqlStatement(statement)), ct);
+        }
     }
 
     private sealed class Pipeline(TursoDatabase database)

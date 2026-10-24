@@ -1,6 +1,6 @@
 # UI and authentication guide
 
-This guide describes the working `auth` branch. The project owner confirmed authentication working on the connected phone on **2026-10-24**. Login, registration, session restoration, and guests enter the module tabs directly; the welcome screen has been removed.
+This guide describes the authentication and feed modules developed on `auth` and `feed` and integrated into `main`. The project owner confirmed authentication working on the connected phone on **2026-10-24**. Login, registration, session restoration, and guests enter the module tabs directly; the welcome screen has been removed.
 
 ## Authentication views
 
@@ -106,6 +106,20 @@ The last code verification before this documentation update reported **17 passin
 | Real API/database | Registration, login, authorization, hashes, duplicates, rollback, logout, expiry: [Test-Authentication.ps1](backend/tests/Test-Authentication.ps1). |
 
 For a phone regression check: create an account, inspect Profile, restart with the API reachable to restore the session, sign out, sign in again, and check remembered email and guest navigation independently. Restarting with the API unavailable should show Login with a reconnect message rather than an authenticated cached profile.
+
+## Feed views on `feed`
+
+The `feed` branch includes the authentication baseline. Its Feed tab now loads real posts from the .NET API and Turso. See the [feed module guide](lib/features/feed/README.md) for source functions, storage, and verification, and the [API route reference](backend/README.md#feed-and-connections-on-feed).
+
+| View | Actions and states |
+| --- | --- |
+| Feed | Navy/yellow styling, greeting, composer card, Connections/Friends/Following chips, newest-first post cards, author/name/time, reaction totals, and People button. Own posts appear in every filter. Pull down to refresh; Load more fetches the next 20. Empty/error/loading states are explicit. |
+| Create post | Opens a keyboard-aware scrolling sheet with author, text field/counter, Share post, and Close. Whitespace-only posts cannot submit. Publishing prevents duplicate requests and dismissal; failure retains text for retry. Success inserts the returned post at the top. Closing discards the in-memory draft. |
+| Post | React opens Like/Love/Celebrate/Insightful choices, plus Remove reaction when selected. Server counts are authoritative. Only your own posts show Delete; confirmation precedes removal. There are no comment controls. |
+| People | Search registered users by name, Discover/Requests chips, Follow/Following, Add friend, Accept/Decline, Cancel request, and friend removal. Connection controls disable while updating; failures show an error. Returning refreshes Feed. |
+| Guest Feed | Sign-in invitation; it does not request private feed data or allow publishing/reactions/connections. |
+
+Friends require recipient acceptance; follows are one-way and independent. Pending requests grant no feed access. Feed/People data and drafts are held in memory, with no Hive cache or automatic refresh. Other users' changes appear on refresh. Startup authentication still requires `/me`, as documented above. Images, post editing, comments, and advanced ranking remain planned.
 
 ## Navigation shell: `lib/app/app_shell.dart`
 
