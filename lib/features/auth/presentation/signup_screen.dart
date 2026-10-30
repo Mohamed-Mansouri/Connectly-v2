@@ -91,7 +91,8 @@ class _SignupScreenState extends State<SignupScreen> {
                               fontWeight: FontWeight.w700,
                             )),
                         const SizedBox(height: 8),
-                        const Text('A new connection starts with you.',
+                        const Text(
+                            'Create an account on this phone. No internet needed.',
                             style: TextStyle(
                               color: Color(0xFFB8C5DA),
                               fontSize: 16,

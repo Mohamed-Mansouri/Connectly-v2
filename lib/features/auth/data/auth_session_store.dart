@@ -9,10 +9,12 @@ abstract class AuthSessionStore {
 class SecureAuthSessionStore implements AuthSessionStore {
   const SecureAuthSessionStore({
     FlutterSecureStorage storage = const FlutterSecureStorage(),
-  }) : _storage = storage;
+    String key = 'connectly_auth_session',
+  })  : _storage = storage,
+        _key = key;
 
   final FlutterSecureStorage _storage;
-  static const _key = 'connectly_auth_session';
+  final String _key;
 
   @override
   Future<String?> readToken() => _storage.read(key: _key);

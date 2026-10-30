@@ -127,7 +127,7 @@ class _NewConversationScreenState extends State<NewConversationScreen> {
                               fontWeight: FontWeight.w700)),
                       const SizedBox(height: 10),
                       const Text(
-                          'Choose friends or people you follow. Find new connections in Feed → People.',
+                          'Choose friends or people you follow. Find new connections in the People tab.',
                           style: TextStyle(color: chatMuted, height: 1.5)),
                       const SizedBox(height: 20),
                       Wrap(spacing: 8, children: [
@@ -205,7 +205,7 @@ class _NewConversationScreenState extends State<NewConversationScreen> {
                         const ChatNotice(
                             title: 'No connections found',
                             message:
-                                'Follow someone or accept a friend request in Feed → People, then try again.')
+                                'Follow someone or accept a friend request in the People tab, then try again.')
                       else
                         ..._contacts.map((person) => Padding(
                             padding: const EdgeInsets.only(bottom: 8),

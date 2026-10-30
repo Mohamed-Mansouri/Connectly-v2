@@ -7,12 +7,16 @@ import '../features/auth/presentation/auth_scope.dart';
 import '../features/auth/presentation/login_screen.dart';
 import 'connectly_theme.dart';
 import 'app_shell.dart';
+import '../shared/data/local_database.dart';
+import 'local_data_scope.dart';
 
 class ConnectlyApp extends StatelessWidget {
-  const ConnectlyApp({this.loginPreferences, this.authController, super.key});
+  const ConnectlyApp(
+      {this.loginPreferences, this.authController, this.database, super.key});
 
   final LoginPreferences? loginPreferences;
   final AuthController? authController;
+  final LocalDatabase? database;
 
   @override
   Widget build(BuildContext context) {
@@ -20,9 +24,15 @@ class ConnectlyApp extends StatelessWidget {
       title: 'Connectly',
       debugShowCheckedModeBanner: false,
       theme: ConnectlyTheme.dark,
-      builder: (context, child) => authController == null
-          ? child!
-          : AuthScope(controller: authController!, child: child!),
+      builder: (context, child) {
+        Widget app = authController == null
+            ? child!
+            : AuthScope(controller: authController!, child: child!);
+        if (database != null) {
+          app = LocalDataScope(database: database!, child: app);
+        }
+        return app;
+      },
       home: authController != null
           ? AuthGate(controller: authController!, preferences: loginPreferences)
           : Builder(

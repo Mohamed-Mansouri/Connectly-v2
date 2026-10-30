@@ -19,7 +19,7 @@ The feature branches were created as siblings from `main`, not a chain. Each bra
 
 To see a branch's changes since its common ancestor with `main`, switch to it and run `git diff main...HEAD`. After a feature is merged into `main`, that comparison no longer lists the merged feature changes. Run `git switch main` to return to the shared baseline. Do not add unfinished module work directly to `main`.
 
-Use Hive for local preferences/caches and Turso through a backend for shared data. Coordinate cloud schema migrations, repository contracts, and Hive keys across branches. The `auth` branch changes the shared entry to restore a session or display Login, then enter the module tabs directly; it removes Home. Review that integration with navigation work and use [UI_GUIDE.md](UI_GUIDE.md) for the account and cache contracts. When a module is ready, review its UI, repository behavior, persistence, and tests, then merge it into `main`. For example:
+The current presentation uses SQLite on the phone through `sqflite`, with Hive for preferences/drafts. Coordinate the local schema version, repository interfaces, and Hive keys across branches. Older feature branches may retain the previous cloud implementation until they merge the updated baseline. See [UI_GUIDE.md](UI_GUIDE.md) for current storage and navigation. Review UI, local persistence, and tests before merging a feature into `main`. For example:
 
     git switch main
     git merge --no-ff auth

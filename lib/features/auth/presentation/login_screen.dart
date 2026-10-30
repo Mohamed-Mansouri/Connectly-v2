@@ -493,8 +493,8 @@ class _Welcome extends StatelessWidget {
         SizedBox(height: compact ? 10 : 18),
         Text(
           compact
-              ? 'Your community is right here.'
-              : 'Familiar faces. New conversations.\nYour community is right here.',
+              ? 'Your accounts and data stay on this phone.'
+              : 'Familiar faces. New conversations.\nAccounts and data stay on this phone.',
           style: TextStyle(
             fontSize: 16,
             height: 1.65,

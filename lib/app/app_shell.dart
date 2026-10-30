@@ -25,10 +25,13 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(index: _selectedIndex, children: [
-        for (var index = 0; index < _screens.length; index++)
-          TickerMode(enabled: index == _selectedIndex, child: _screens[index]),
-      ]),
+      body: AppTabScope(
+          select: (index) => setState(() => _selectedIndex = index),
+          child: IndexedStack(index: _selectedIndex, children: [
+            for (var index = 0; index < _screens.length; index++)
+              TickerMode(
+                  enabled: index == _selectedIndex, child: _screens[index]),
+          ])),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) {
@@ -37,7 +40,7 @@ class _AppShellState extends State<AppShell> {
         destinations: const [
           NavigationDestination(icon: Icon(Icons.home_outlined), label: 'Feed'),
           NavigationDestination(
-              icon: Icon(Icons.place_outlined), label: 'Nearby'),
+              icon: Icon(Icons.people_outline), label: 'People'),
           NavigationDestination(
               icon: Icon(Icons.chat_bubble_outline), label: 'Chats'),
           NavigationDestination(
@@ -46,4 +49,13 @@ class _AppShellState extends State<AppShell> {
       ),
     );
   }
+}
+
+class AppTabScope extends InheritedWidget {
+  const AppTabScope({required this.select, required super.child, super.key});
+  final ValueChanged<int> select;
+  static void people(BuildContext context) =>
+      context.getInheritedWidgetOfExactType<AppTabScope>()?.select(1);
+  @override
+  bool updateShouldNotify(AppTabScope oldWidget) => false;
 }

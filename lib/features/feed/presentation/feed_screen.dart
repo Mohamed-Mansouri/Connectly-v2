@@ -1,13 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../app/connectly_theme.dart';
+import '../../../app/app_shell.dart';
+import '../../../app/local_data_scope.dart';
 import '../../auth/presentation/auth_scope.dart';
 import '../application/feed_controller.dart';
-import '../data/feed_api.dart';
 import '../domain/feed_models.dart';
 import 'create_post_sheet.dart';
 import 'feed_widgets.dart';
-import 'people_screen.dart';
 import 'post_card.dart';
 
 class FeedScreen extends StatefulWidget {
@@ -19,23 +19,29 @@ class FeedScreen extends StatefulWidget {
 
 class _FeedScreenState extends State<FeedScreen> {
   FeedController? _controller;
-  FeedApi? _ownedApi;
   String? _userId;
+  bool _visible = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final auth = AuthScope.maybeOf(context);
-    if (_userId == auth?.user?.id) return;
+    final visible = TickerMode.valuesOf(context).enabled;
+    if (_userId == auth?.user?.id) {
+      if (visible && !_visible && _controller != null) {
+        unawaited(_controller!.refresh());
+      }
+      _visible = visible;
+      return;
+    }
+    _visible = visible;
     _controller?.removeListener(_changed);
     _controller?.dispose();
-    _ownedApi?.close();
-    _ownedApi = null;
     _controller = null;
     _userId = auth?.user?.id;
     if (_userId != null) {
-      final repository = widget.repository ??
-          (_ownedApi = FeedApi(token: () => auth?.sessionToken));
+      final repository =
+          widget.repository ?? LocalDataScope.of(context).feedFor(_userId!);
       _controller = FeedController(repository)..addListener(_changed);
       unawaited(_controller!.refresh());
     }
@@ -60,16 +66,6 @@ class _FeedScreenState extends State<FeedScreen> {
             repository: controller.repository, name: user.name));
     if (mounted && identical(controller, _controller) && post != null) {
       controller.created(post);
-    }
-  }
-
-  Future<void> _people() async {
-    final controller = _controller;
-    if (controller == null) return;
-    await Navigator.of(context).push(MaterialPageRoute<void>(
-        builder: (_) => PeopleScreen(repository: controller.repository)));
-    if (mounted && identical(controller, _controller)) {
-      await controller.refresh();
     }
   }
 
@@ -103,7 +99,6 @@ class _FeedScreenState extends State<FeedScreen> {
   void dispose() {
     _controller?.removeListener(_changed);
     _controller?.dispose();
-    _ownedApi?.close();
     super.dispose();
   }
 
@@ -119,16 +114,6 @@ class _FeedScreenState extends State<FeedScreen> {
                 fontWeight: FontWeight.w700,
                 fontSize: 27,
                 letterSpacing: -1)),
-        actions: [
-          if (controller != null)
-            Padding(
-                padding: const EdgeInsets.only(right: 12),
-                child: IconButton.filledTonal(
-                    key: const Key('feed_people'),
-                    onPressed: _people,
-                    tooltip: 'People and friend requests',
-                    icon: const Icon(Icons.people_outline)))
-        ],
       ),
       body: SafeArea(
           top: false,
@@ -233,7 +218,7 @@ class _FeedScreenState extends State<FeedScreen> {
                               message:
                                   'Share your first post or find people to connect with. Your posts always appear alongside this filter.',
                               action: OutlinedButton.icon(
-                                  onPressed: _people,
+                                  onPressed: () => AppTabScope.people(context),
                                   icon: const Icon(Icons.person_add_alt),
                                   label: const Text('Find people'))),
                         for (final post in controller.posts)

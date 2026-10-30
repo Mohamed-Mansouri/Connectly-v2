@@ -51,5 +51,7 @@
 	<string>Flutter course app need access to your gallery to add photo for post</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Flutter course app need access to your camera to add photo for post</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Use your location to place your People pin and find nearby local accounts.</string>
 </dict>
 </plist>

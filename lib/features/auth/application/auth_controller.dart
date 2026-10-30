@@ -17,7 +17,7 @@ class AuthController extends ChangeNotifier {
   String? _startupMessage;
 
   AuthUser? get user => _user;
-  // For authenticated feature repositories; never persist this token in Hive.
+  // Local session credential; never persist passwords or this token in Hive.
   String? get sessionToken => _token;
   bool get restoring => _restoring;
   String? get startupMessage => _startupMessage;
@@ -43,7 +43,8 @@ class AuthController extends ChangeNotifier {
               'We couldn\'t restore your session. Please sign in again.';
         }
       } else {
-        _startupMessage = 'We couldn\'t reconnect. Please sign in again.';
+        _startupMessage =
+            'We couldn\'t open your account. Please sign in again.';
       }
     } catch (_) {
       _user = null;
@@ -63,7 +64,7 @@ class AuthController extends ChangeNotifier {
       try {
         await _repository.signOut(session.token);
       } catch (_) {
-        // The rejected local session still has a server-side expiry.
+        // The rejected session still expires in the repository.
       }
       throw const AuthException(
         'We couldn\'t save your session on this device. Please try again.',
@@ -85,7 +86,7 @@ class AuthController extends ChangeNotifier {
 
   Future<void> signOut() async {
     final token = _token;
-    // Clear device credentials even when the network is unavailable.
+    // Clear saved credentials before releasing the current account.
     await _store.clear();
     _token = null;
     _user = null;
@@ -94,7 +95,7 @@ class AuthController extends ChangeNotifier {
       try {
         await _repository.signOut(token);
       } catch (_) {
-        // Offline revocation cannot reach the server; server expiry still applies.
+        // A storage failure must not prevent local sign-out; expiry still applies.
       }
     }
   }

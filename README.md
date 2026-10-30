@@ -1,80 +1,59 @@
-# Connectly v2
+﻿# Connectly v2 — local presentation
 
-This is the new Flutter repository for our four-person university project. Open **`C:\Users\Med\Documents\Connectly-v2`** in VS Code. The older project in `C:\Users\Med\Documents\Connectly` is separate.
+Connectly now runs entirely on the phone using **SQLite through `sqflite`**, with **Hive** for preferences and messaging drafts. No .NET API, Turso connection, internet connection, database token, or port forwarding is needed to use the app.
 
-The `main` branch is the shared baseline, including authentication, feed, and messaging: registration/login, secure sessions, account display/logout, guest navigation, text posts, connections/reactions, and direct/group chats. Nearby and the advanced features remain planned work.
+The database starts **empty**, as requested. Create accounts on this phone. Earlier cloud accounts/posts/messages are not imported; the Turso database is unchanged. Separate phones have separate databases and do not exchange messages.
 
-The storage direction is **Hive on the device and Turso for shared cloud records**. The app uses the **ASP.NET Core .NET 10 API** in [backend/README.md](backend/README.md). Hive stores remembered email and account-scoped messaging drafts/pending sends; platform secure storage protects the user session. See [WHATS_NEXT.md](WHATS_NEXT.md) for the remaining work.
+## Working features
 
-The app opens login or restores a valid saved session. **Create account** registers a Turso account through the .NET API. Sign in to open the module tabs directly, then select **Profile** to see your account and sign out. **Continue as a guest** opens the tabs without authentication. Keep the backend running and configure the phone's USB reverse mapping as described in [backend/README.md](backend/README.md).
+- Registration, login/logout, offline session restoration, Profile, and guest navigation.
+- Text posts, friends/following filters, friend requests, four reactions, and own-post deletion.
+- Direct/group text chats, conversation history, unread counts, pagination, saved drafts, and retry deduplication.
+- People combines name search, friend requests, friends/following, and an offline Ariana map with saved pins and proximity filters. Comments, media, profile editing, and advanced features remain planned.
 
-The feed module adds real text posts, friends/following feeds, friend requests, and four reactions. See the [feed module guide](lib/features/feed/README.md) and restart the updated .NET API before testing its endpoints. Comments are deferred.
+## Storage and source map
 
-Chats supports direct/group text conversations, shared history, unread counts, polling, saved drafts, and safe retries. See the [messaging guide](lib/features/messaging/README.md). The owner confirmed it working on the phone on 2026-10-24.
-
-## Project views
-
-The flow is **Login / Create account / Continue as a guest -> Feed / Nearby / Chats / Profile**. The welcome screen and its **Open modules** step have been removed.
-
-| View | What it shows now | Main source file |
+| Data | Storage | Source |
 | --- | --- | --- |
-| Module navigation | Four bottom tabs. Switching tabs preserves their state. | `lib/app/app_shell.dart` |
-| Feed | Text posts, connection filters, reactions, and People. | `lib/features/feed/presentation/feed_screen.dart` |
-| Nearby | An empty starting point for discovery and a future map. | `lib/features/discovery/module_entry.dart` |
-| Chats | Direct/group conversations, unread counts, shared text messages, and saved drafts/retries. | `lib/features/messaging/presentation/messages_screen.dart` |
-| Profile | Account name/email and logout, or a guest sign-in action. | `lib/features/auth/presentation/profile_screen.dart` |
+| Accounts, password hashes, sessions, posts, follows, friendships, reactions, conversations, members, messages | `connectly_local.db` in the phone's app database directory | [schema](lib/shared/data/local_schema.dart), [opening/versioning](lib/shared/data/local_database.dart) |
+| Remembered email | Hive `auth_preferences` / `remembered_email` | [preferences](lib/features/auth/data/login_preferences.dart) |
+| Account/conversation drafts and pending sends | Hive `messaging_local` / `<userId>:<conversationId>` | [chat store](lib/features/messaging/data/chat_local_store.dart) |
+| Current local-session token | Platform secure storage, `connectly_local_auth_session` | [session store](lib/features/auth/data/auth_session_store.dart) |
 
-Profile, Feed, and Chats now load real account and application data; Nearby remains a starting view. Each feature branch owns its module entry and presentation files. Branches that have not merged the updated `main` may still show earlier screens. See [UI_GUIDE.md](UI_GUIDE.md) for widgets and navigation behavior.
+`main.dart -> LocalAppLoader -> LocalDatabase -> SqliteAuthRepository / SqliteFeedRepository / SqliteMessagingRepository`
 
-## Branches
+[LocalDataScope](lib/app/local_data_scope.dart) supplies the SQLite feature repositories to all routes. Existing screens/controllers keep their repository interfaces. Passwords use salted PBKDF2-SHA256 hashes; only a token hash is stored in SQLite. Local session validation needs no network.
 
-| Branch | Owner's starting work |
-| --- | --- |
-| `main` | Shared authentication, feed, connections, messaging, theme, navigation, and module entry contracts. |
-| `auth` | Working registration, login, profile display, secure sessions, and logout; profile editing and face verification remain planned. |
-| `feed` | Text posts, friends/following feeds, friend requests, and reactions; uploads, comments, and personalized ranking remain planned. |
-| `discovery` | Nearby screen; future map and live proximity matching. |
-| `messaging` | Direct/group text chats, unread counts, shared history, saved drafts/retries; attachments and translated voice messages remain planned. |
-| `navigation` | Shared navigation test and future routing work. |
-| `archive/sprint-0` | Earlier combined preview and supplied design screenshots. |
+The old `backend/` and `*_api.dart` implementations remain as reference and are not selected by the local app. Their HTTP unit tests are retained; local integration tests exercise actual SQLite.
 
-Run `git branch --list` to see the branches and `git switch auth` (or another branch name) to inspect one module. Switching branches changes the files in the open folder. Read [BRANCHES.md](BRANCHES.md) before merging work, and [WHATS_NEXT.md](WHATS_NEXT.md) for local storage responsibilities and advanced feature targets.
-
-## Run from the VS Code terminal
-
-1. In VS Code, choose **File > Open Folder** and select `C:\Users\Med\Documents\Connectly-v2`. Open **Terminal > New Terminal**. If this terminal was open before Flutter was installed, restart VS Code so it sees the updated PATH.
-2. In the PowerShell terminal, prepare and check the project:
-
-   ```powershell
-   cd C:\Users\Med\Documents\Connectly-v2
-   flutter doctor
-   flutter pub get
-   flutter devices
-   ```
-
-3. Keep USB debugging enabled and your phone connected. Use the Android device ID shown by `flutter devices`:
-
-   ```powershell
-   flutter run -d ae64b3ca
-   ```
-
-   `ae64b3ca` is the ID detected for the phone used during setup; replace it if `flutter devices` shows a different ID. Approve any USB debugging prompt on the phone. The Android app ID is `com.example.connectly_v2`, so it can be installed beside the older app.
-
-4. To run on this PC in Chrome instead, use `flutter run -d chrome`. Native Windows is also available with `flutter run -d windows`.
-
-While `flutter run` is active in the terminal, press `r` for hot reload, `R` for hot restart, and `q` to stop. For a quick code check, run `flutter analyze`. The navigation widget test lives on the `navigation` branch:
+## Run on the phone
 
 ```powershell
-git switch navigation
 flutter pub get
-flutter test
-git switch main
+flutter devices
+flutter run -d <device-id>
 ```
 
-## Setup verified on this PC
+USB debugging or Android Wireless debugging can be used to install/debug. Wireless debugging needs pairing and a connection address; see [Android instructions](https://developer.android.com/tools/adb#connect-to-a-device-over-wi-fi). Wi-Fi is only needed for wireless installation/debugging; the installed app uses its local database. Do not pass an `API_BASE_URL` or run the API for this version.
 
-Flutter 3.47.7, Dart 3.13.5, the Flutter/Dart VS Code extensions, Android Studio, and Android SDK 36 are installed. `flutter doctor -v` reported no issues. `flutter analyze` and the web build passed. The Android debug app built, installed, and launched on the connected Android 11 phone. The first build may take longer while Gradle downloads its tools.
+```powershell
+flutter test
+flutter analyze
+flutter build apk --debug
+```
 
-See [SPRINT_00.md](SPRINT_00.md) for the completed baseline and [UI_GUIDE.md](UI_GUIDE.md) for each UI component.
+The APK is `build/app/outputs/flutter-apk/app-debug.apk`. The presentation targets Android; SQLite repository tests use `sqflite_common_ffi` on this PC.
 
-For the completed auth module, see [views and actions](UI_GUIDE.md#authentication-views), [functions and API flow](UI_GUIDE.md#authentication-functions), and [Hive, secure storage, and cache behavior](UI_GUIDE.md#authentication-storage-and-cache).
+## Presentation on one phone
+
+1. Create Alice, publish a post, then sign out in Profile.
+2. Create Bob. Open the People tab, follow Alice; view/react to her post and send a friend request.
+3. As Bob, start a direct chat with Alice and send a message.
+4. Sign out, sign in as Alice, accept Bob's request, read his message, and reply.
+5. Switch back to Bob to show the reply/unread state. Restart to demonstrate persistence.
+6. For a group, create a third local account, connect with it, and select two people when creating the group.
+7. In People, place a different map pin for each account. Switch accounts, select Map, choose a distance, and tap a person's marker to follow/add a friend. Only shared pins appear. GPS is optional; manually placed pins also work offline.
+
+The map covers **Ariana city** (36.84–36.90°N, 10.15–10.21°E), with bundled OpenStreetMap geometry and visible attribution. It does not download tiles. Saved locations are optional per-account SQLite rows, with a hide/remove option and no background tracking. Pins represent accounts on this phone, not live nearby devices. Existing pins outside Ariana stay saved and can be repositioned using Edit my pin. See [map credits/source](assets/maps/README.md).
+
+See [UI_GUIDE.md](UI_GUIDE.md) for views and storage details and [WHATS_NEXT.md](WHATS_NEXT.md) for remaining work. Use [BRANCHES.md](BRANCHES.md) for Git workflow. No demo data is seeded.

@@ -1,155 +1,60 @@
-# UI and authentication guide
+﻿# UI and local data guide
 
-This guide describes authentication, feed, and messaging developed on their feature branches and integrated into `main`. The project owner confirmed authentication and messaging working on the connected phone on **2026-10-24**. Login, registration, session restoration, and guests enter the module tabs directly; the welcome screen has been removed.
+## Current architecture — 2026-10-26
 
-## Authentication views
+The app uses SQLite on the phone through `sqflite`. Hive holds preferences and message drafts/pending sends. Authentication, feed, and messaging work without a backend. New installations start empty. Accounts and records on another phone or in the old Turso database do not appear here.
 
-| View | Content and actions | Result and states |
-| --- | --- | --- |
-| Startup | Loading indicator while checking the saved session. | A valid session opens Feed. No session or a failed check opens Login; connection/storage failures show a startup message. |
-| Login | Email, password, show/hide password, **Remember my email**, **Sign in**, **Create account**, **Continue as a guest**. | Sign-in opens Feed. Invalid fields show validation; service errors appear in the form. Submitting disables controls and shows progress to prevent duplicate requests. |
-| Create account | Name, email, password, confirmation, visibility toggle, submit, and Back. | Registration also signs in and opens Feed. Errors appear in the form. Submission disables controls and prevents Back until the request finishes. |
-| Profile: account | Avatar icon, current user's name/email, and **Sign out**. | Sign out returns to Login. A device storage failure shows a snackbar and keeps the account signed in. Profile editing remains planned. |
-| Profile: guest | Guest explanation and **Sign in**. | Sign in returns to Login. Guest access creates no account or session. Android Back from the guest shell also returns to Login. |
-| Module tabs | Feed, Nearby, Chats, and Profile. | Feed opens first. `IndexedStack` preserves tab state; `TickerMode` identifies the visible tab so Chats can pause polling. Nearby remains a starting screen. |
+`Screen -> controller / repository interface -> SQLite repository -> connectly_local.db`
 
-### Layout and validation
+[LocalAppLoader](lib/app/local_app_loader.dart) opens the database, initializes email preferences, creates the local authentication controller, and restores a saved local session. Failure to open the database shows a storage error and Retry. [LocalDataScope](lib/app/local_data_scope.dart) supplies the shared database to feature repositories. No runtime screen constructs an HTTP API client.
 
-- Login uses the existing navy/yellow colors and Urbanist typography. Small screens use tighter spacing; wide screens place the welcome text beside the form. Forms scroll for the keyboard, validation messages, and enlarged text.
-- Login's fixed `SafeArea` footer keeps **Create account** and **Continue as a guest** above Android's navigation controls. It hides while the keyboard is open.
-- Fields support autofill and keyboard Next/Done actions. Login requires a valid email and nonempty password. Email is trimmed before submission; passwords are preserved exactly.
-- Registration requires a trimmed name of 2–80 characters, a valid email of at most 254 characters, a password of 8–128 characters, and matching confirmation. Confirmation stays on the device. Its visibility toggle controls both password fields.
-- Connectly does not load a saved password from Hive. Successful authentication completes the platform autofill context; the device's password manager can independently offer to save credentials.
+## Views and actions
 
-## Authentication functions
-
-| Component | Functions / responsibility | Source |
-| --- | --- | --- |
-| Startup | Opens Hive preferences, creates the API/session controller, and starts restoration. Hive initialization failure leaves authentication usable with email remembering disabled. | [main.dart](lib/main.dart) |
-| Gate | Observes the controller and chooses loading, Login, or `AppShell`. Pushes registration and guest routes. | [AuthGate](lib/features/auth/presentation/auth_gate.dart) |
-| Login | `_submit()` validates, saves the email preference, and calls sign-in. `_continueAsGuest()` saves the preference and opens tabs. `_saveEmail()` manages remembering/deletion. | [LoginScreen](lib/features/auth/presentation/login_screen.dart) |
-| Registration | Validates the form, calls sign-up, and closes the registration route after success. | [SignupScreen](lib/features/auth/presentation/signup_screen.dart) |
-| Account state | `signIn()` / `signUp()` obtain a session; `_accept()` securely saves its token before exposing the user. `restore()` validates saved credentials; `signOut()` clears them and attempts server revocation. | [AuthController](lib/features/auth/application/auth_controller.dart) |
-| HTTP repository | `signIn`, `signUp`, `currentUser`, and `signOut` send JSON, attach bearer credentials when required, and map failures to `AuthException`. | [AuthApi](lib/features/auth/data/auth_api.dart) |
-| Contracts | `AuthUser`: ID, name, email, creation date. `AuthSession`: user and token. `AuthRepository`: four account operations. | [Auth models](lib/features/auth/domain/auth_models.dart) |
-| Shared profile | `AuthScope` exposes the controller. Profile reads its in-memory user and invokes sign-out; opening the tab does not call `/me` again. | [AuthScope](lib/features/auth/presentation/auth_scope.dart), [ProfileScreen](lib/features/auth/presentation/profile_screen.dart) |
-| Server service | Normalizes emails, hashes/verifies passwords, creates accounts/sessions, retrieves users, and revokes sessions. | [AuthService.cs](backend/Services/AuthService.cs) |
-
-### Request flow
-
-```mermaid
-flowchart TD
-    Start[App starts] --> Restore[Read secure token]
-    Restore -->|No token| Login[Login]
-    Restore -->|Token exists| Me[GET /me]
-    Me -->|Valid| Tabs[Feed / Nearby / Chats / Profile]
-    Me -->|Expired or failed| Login
-    Login -->|Sign in or create account| API[.NET API creates session in Turso]
-    API --> Save[Save token in secure storage]
-    Save -->|Saved| Tabs
-    Login -->|Continue as a guest| Tabs
-    Tabs -->|Account signs out| Clear[Clear local token and attempt remote revocation]
-    Clear --> Login
-```
-
-| Operation | API | Server behavior |
-| --- | --- | --- |
-| Register | `POST /auth/signup`: name, email, password | Creates user and session in one transaction; returns 201 with `user`, `token`, `expiresAt`. |
-| Sign in | `POST /auth/login`: email, password | Verifies the password and creates a session; returns 200 with the same session fields. |
-| Restore | `GET /me` with bearer token | Checks the session hash and expiry in Turso; returns `{ user }`, or 401 for an invalid session. |
-| Sign out | `POST /auth/logout` with bearer token | Deletes that session and returns 204. Other device sessions remain valid. |
-
-The backend trims/lowercases emails and uses ASP.NET Core Identity's salted password hasher. Unknown accounts and incorrect passwords return the same 401 message. Duplicate email returns 409, invalid input 400, rate limiting 429, and unexpected service failures a safe 503 response. Login/signup share a limit of 30 attempts per IP per 15 minutes. See [backend/README.md](backend/README.md) for setup and endpoint details.
-
-## Authentication storage and cache
-
-The table below describes authentication storage. Messaging separately uses Hive for drafts and pending sends, as documented below; profile, feed, and server chat-history caches are not implemented.
-
-| Store | Data / key | Write and read behavior | Lifetime / clearing |
-| --- | --- | --- | --- |
-| Hive | `Box<String>('auth_preferences')`, key `remembered_email`; optional email only. | Login loads it when created. Login submission or guest entry saves a valid trimmed email when opted in. | Survives restart/logout. Unchecking deletes it immediately; saving with no valid opted-in email also deletes it. No TTL or sync. |
-| Platform secure storage | Key `connectly_auth_session`; opaque user bearer token only. | Saved after login/signup; read at startup before `/me`. | Cleared on logout or a 401 during restoration. Server validity is seven days. Flutter does not store or schedule renewal from `expiresAt`. |
-| Controller memory | Current user, token, restoring flag, startup message. | Account data comes from authentication or `/me`. | User/token clear on logout or failed restoration. Process termination discards memory; no persistent profile cache. |
-| Navigation memory | Selected tab and mounted widgets in `IndexedStack`. | Updated within the current shell. | Not persisted. A fresh shell starts on Feed. |
-| Turso `users` | ID, normalized unique email, name, password hash, creation timestamp. | Created by registration; read through the API. | Survives device logout. Account deletion is not implemented. |
-| Turso `auth_sessions` | SHA-256 token hash, user ID, creation/expiry timestamps. | A new session is created for each signup/login. | Fixed seven-day expiry; logout deletes the current session. No refresh/sliding renewal or automatic expired-row cleanup. |
-| Backend configuration | Ignored root `dbtoken` file supplies the Turso database credential locally. | Read by the backend; .NET configuration can override it. | Separate from user tokens; never delivered to Flutter or stored in Hive. |
-
-Implementations: [HiveLoginPreferences](lib/features/auth/data/login_preferences.dart), [SecureAuthSessionStore](lib/features/auth/data/auth_session_store.dart), and [Turso auth schema](backend/migrations/001_auth.sql).
-
-### Remembered email lifecycle
-
-**Remember my email** is independent of authentication. Checking alone does not write; submitting Login or entering as a guest does. The preference is saved before the sign-in request, so the email may remain even if the password is incorrect. Registration does not independently save this preference.
-
-Passwords and session tokens are never written to Hive. Preference write failures show an availability notice and do not block sign-in or guest access. Logout retains the remembered email to prefill Login; uncheck the option to remove it.
-
-### Session and offline lifecycle
-
-1. Startup reads secure storage. No token means Login; an existing token requires a successful `/me` response before authenticated access is restored.
-2. A 401 clears the token and returns to Login. If deletion fails, a startup message asks the user to sign in again.
-3. A network/service failure returns to Login with a reconnect message, retaining the secure token for a later startup attempt. A stored token alone does not grant offline authenticated access; guest navigation remains available.
-4. If saving a newly issued token fails, the controller rejects local sign-in, attempts remote revocation, and reports a storage error. Registration may already have created the account; the user can subsequently sign in to it.
-5. Logout first deletes the device token, then clears the in-memory account and attempts remote revocation. If the network is unavailable, local logout succeeds and the remote session remains valid until expiry or explicit revocation. Revocation is not queued for retry. If local deletion fails, logout stops and Profile shows an error.
-
-`AuthApi` implements no HTTP response cache; the backend sends `Cache-Control: no-store`. Automatic Hive/Turso sync, background refresh, token refresh, persistent profile caching, and offline authenticated restoration are not implemented. An already open account remains in memory until logout or process termination; there is no periodic `/me` check or automatic navigation at expiry. Protected API requests still require server session validation.
-
-## Verification
-
-The last code verification before this documentation update reported **17 passing Flutter tests**, no analyzer issues, a successful .NET build, and a passing live Turso authentication integration check. The owner subsequently confirmed authentication working on the phone. This documentation update changes no runtime behavior.
-
-| Check | Coverage / source |
+| View | Working behavior |
 | --- | --- |
-| API client | Request bodies, preserved passwords, bearer headers, service errors: [auth_api_test.dart](test/features/auth/auth_api_test.dart). |
-| Controller | Secure save before accepting a user, restoration, expired/offline sessions, save failure revocation, local logout: [auth_controller_test.dart](test/features/auth/auth_controller_test.dart). |
-| Hive | Write, close/reopen, and delete the preference: [login_preferences_test.dart](test/features/auth/login_preferences_test.dart). |
-| Login widgets | Validation, preference, visibility, busy/errors, guest navigation, small screens/keyboard, system navigation spacing: [login_screen_test.dart](test/features/auth/login_screen_test.dart). |
-| Real API/database | Registration, login, authorization, hashes, duplicates, rollback, logout, expiry: [Test-Authentication.ps1](backend/tests/Test-Authentication.ps1). |
+| Login | Email/password, show/hide password, remembered email, sign in, create account, guest access. The subtitle explains that accounts/data stay on this phone. Validation, busy states, autofill, responsive scrolling, and a safe-area footer remain. |
+| Create account | Name/email/password/confirmation. Creates an account in local SQLite and signs in. Names require 2–80 characters, valid emails at most 254, passwords 8–128. Email is trimmed/lowercased; passwords are preserved exactly. |
+| Profile | Displays the current local user's name/email; Sign out returns to Login. Guests get a sign-in action. Editing remains planned. |
+| Feed | Connections/Friends/Following filters, chronological posts, composer, reaction totals, pull to refresh, and pagination. Empty-feed Find people switches to the People tab. Own posts appear in every filter. |
+| Create post | Trimmed text, 1–3,000 characters; inserts into SQLite. Failure preserves the open sheet's text. Closing discards this in-memory post draft. Own-post deletion requires confirmation and cascades reactions. |
+| People | Bottom tab replacing Nearby. Name search, Discover/Friends/Friend requests/Following filters, list/map modes, and connection actions in one place. Follow/unfollow is one-way; friendship requires recipient acceptance. Tap map markers to select people and reveal the same actions. Switch accounts to demonstrate both sides. |
+| Your map pin | Tap the offline Ariana map or request a foreground GPS fix; Save explicitly. Share/hide/remove the pin. Denied permission, timeout, disabled location, and outside-coverage fixes leave manual placement available. No continuous tracking. |
+| Proximity | Optional 1/5/10/25 km filters measure straight-line distance from the account's saved pin and sort nearest first. Unlocated/hidden accounts remain searchable in Any distance list mode but are excluded from radius matches and the map. |
+| Post reactions | Like, Love, Celebrate, Insightful; one reaction per account/post. Replace/remove changes local SQLite rows. Comments are deferred. |
+| Chats | Member conversations, title search, last-message previews, unread counts, refresh, and New conversation. Guest access does not query account data. |
+| New conversation | Select friends/followed accounts on this phone: one for direct chat, or 2–19 others plus a group title. Direct pairs reopen their existing chat. |
+| Conversation | Incoming/outgoing text, sender names in groups, dates/times, earlier history, keyboard-aware composer, send/retry states, and member list. Messages require 1–4,000 trimmed characters. |
 
-For a phone regression check: create an account, inspect Profile, restart with the API reachable to restore the session, sign out, sign in again, and check remembered email and guest navigation independently. Restarting with the API unavailable should show Login with a reconnect message rather than an authenticated cached profile.
+The navy/yellow theme and Urbanist type remain. Feed/Chats/Profile keep their state while switching tabs using `IndexedStack`. Chats pauses periodic refresh while hidden/backgrounded. Its existing 10-second inbox and 5-second conversation refreshes now read the local database; they send no HTTP requests. Return to Chats or pull to refresh after switching accounts.
 
-## Feed views on `feed`
+## SQLite responsibilities
 
-The `feed` branch includes the authentication baseline. Its Feed tab now loads real posts from the .NET API and Turso. See the [feed module guide](lib/features/feed/README.md) for source functions, storage, and verification, and the [API route reference](backend/README.md#feed-and-connections-on-feed).
+[local_schema.dart](lib/shared/data/local_schema.dart) defines the original tables and version 2 location table. [LocalDatabase](lib/shared/data/local_database.dart) opens `connectly_local.db` in `getDatabasesPath()`, enables foreign keys, and upgrades version 1 by adding `user_locations` without replacing existing records. Creation/upgrades are transactional; repositories use bound query arguments and transactions for related writes. SQLite stores timestamps as UTC text and reaction/unread counts as integers.
 
-| View | Actions and states |
+| Tables | Repository / functions |
 | --- | --- |
-| Feed | Navy/yellow styling, greeting, composer card, Connections/Friends/Following chips, newest-first post cards, author/name/time, reaction totals, and People button. Own posts appear in every filter. Pull down to refresh; Load more fetches the next 20. Empty/error/loading states are explicit. |
-| Create post | Opens a keyboard-aware scrolling sheet with author, text field/counter, Share post, and Close. Whitespace-only posts cannot submit. Publishing prevents duplicate requests and dismissal; failure retains text for retry. Success inserts the returned post at the top. Closing discards the in-memory draft. |
-| Post | React opens Like/Love/Celebrate/Insightful choices, plus Remove reaction when selected. Server counts are authoritative. Only your own posts show Delete; confirmation precedes removal. There are no comment controls. |
-| People | Search registered users by name, Discover/Requests chips, Follow/Following, Add friend, Accept/Decline, Cancel request, and friend removal. Connection controls disable while updating; failures show an error. Returning refreshes Feed. |
-| Guest Feed | Sign-in invitation; it does not request private feed data or allow publishing/reactions/connections. |
+| `users`, `auth_sessions` | [SqliteAuthRepository](lib/features/auth/data/sqlite_auth_repository.dart): `signUp`, `signIn`, `currentUser`, `signOut`. |
+| `posts`, `follows`, `friendships`, `post_reactions` | [SqliteFeedRepository](lib/features/feed/data/sqlite_feed_repository.dart): load/create/delete/react, people, follow, friendship. |
+| `user_locations` plus connections | [SqlitePeopleRepository](lib/features/discovery/data/people_repository.dart): search/filter with visible-location joins, Haversine distances, `saveLocation`, `removeLocation`. The current account can still use its hidden pin as its distance origin. Locations are SQLite data, not Hive cache. |
+| `conversations`, `conversation_members`, `messages` | [SqliteMessagingRepository](lib/features/messaging/data/sqlite_messaging_repository.dart): conversations/contacts/create/members, history/send/read. |
 
-Friends require recipient acceptance; follows are one-way and independent. Pending requests grant no feed access. Feed/People data and drafts are held in memory, with no Hive cache or automatic refresh. Other users' changes appear on refresh. Startup authentication still requires `/me`, as documented above. Images, post editing, comments, and advanced ranking remain planned.
+Feed visibility is still own posts plus followed authors/accepted friends. Chat history/send/read operations check membership. Authors/senders come from the currently authenticated account's repository. Messages are unique by conversation/sender/client ID so retrying does not duplicate them. Pagination uses timestamp/ID cursors for posts and integer sequences for messages. Unread cursors cannot advance past existing messages.
 
-## Messaging views
+The People tab refreshes on activation or pull/Refresh. Feed refreshes when revisited after connection changes. [ArianaMap](lib/features/discovery/presentation/ariana_map.dart) renders [bundled ODbL geometry](assets/maps/README.md) with Flutter Map and no tile provider/network access. Coverage is Ariana city (36.84–36.90°N, 10.15–10.21°E); map pins are the saved positions of accounts on this phone. Old pins outside the current map remain saved, with a prompt to edit them.
 
-| View | Actions and states |
+## Sessions and Hive
+
+Passwords are salted PBKDF2-SHA256 hashes at 120,000 iterations, defined in [LocalPasswords](lib/features/auth/data/local_passwords.dart). Secure storage holds the opaque token under `connectly_local_auth_session`; SQLite holds its SHA-256 hash and seven-day expiry. Startup checks SQLite locally, so valid sessions restore offline. This separate key does not reuse the old cloud token. Logout clears the saved token and removes its local session.
+
+| Hive box / key | Content and lifecycle |
 | --- | --- |
-| Chats | Search recent conversations, inspect preview/unread counts, pull to refresh, and start a new chat. Loading, empty, guest, and error views are explicit. |
-| New conversation | Choose direct/group, search friends/followed people, select contacts, and name groups. Validation and busy guards prevent invalid/duplicate submissions. |
-| Conversation | Read incoming/outgoing text, sender names for groups, dates/times, earlier history, and member list. Composer stays above the keyboard/system controls. Sends show progress and safe retry actions. |
-| Members | Read-only participant list with a retry state for service errors. |
+| `auth_preferences` / `remembered_email` | Optional email. Loaded on Login; saved before submission/guest entry when opted in; unchecking deletes it. Logout retains it. No password/token is stored here. |
+| `messaging_local` / `<userId>:<conversationId>` | JSON draft and outbox entries `{ clientId, body, createdAt }`. Draft saves are debounced 250 ms and queued on leaving. A pending send is saved before its SQLite insert, then removed when confirmed. Empty records are deleted. Restored pending items have an explicit Retry action. |
 
-The active inbox polls every ten seconds; an active conversation polls every five seconds. Polling pauses behind other routes, on hidden tabs, and when the app is backgrounded. Active conversations advance the current account's unread marker. Messages are visible only to members; new chats use accepted friends or people the creator follows.
+Hive records remain account-scoped after logout. If Hive cannot open, temporary memory keeps chat usable with a notice; subsequent write failures retain pending text and stop that send. Full message history is in SQLite, so it remains available offline after restart. Post drafts remain in memory. There is no network synchronization between phones.
 
-Hive box `messaging_local` stores JSON drafts and pending sends under `<userId>:<conversationId>`. Drafts save after a short debounce and on leaving. Each pending send retains a stable UUID/body/timestamp before transmission; retrying uses that ID, and server uniqueness prevents duplicates. Confirmed items are removed, empty records are deleted, and restored pending messages require explicit Retry. Records remain scoped to their account after logout. If Hive cannot open, the app uses temporary memory with a notice; a subsequent local write failure retains pending text and stops that send.
+## Verification and presentation
 
-There is no persistent server-history cache, automatic resend on startup, push delivery, presence, or message-level read receipt. Voice, attachments, and group membership changes remain planned. The [messaging module guide](lib/features/messaging/README.md) maps the functions, storage lifecycle, and limitations. [API routes](backend/README.md#messaging) document server behavior. All 48 Flutter tests, Flutter analysis, the .NET build, and live messaging integration checks passed before the owner's phone confirmation.
+The local test suite uses a real SQLite engine to check empty initialization, foreign keys, authentication/passwords/sessions, friends/follows, reactions, ownership, group membership, unread counts, idempotent sends, pagination, and reopening a database file. [local_app_test.dart](test/local/local_app_test.dart) renders the default Feed/Chats with HTTP creation blocked.
 
-## Navigation shell: `lib/app/app_shell.dart`
-
-`NavigationBar` has Feed, Nearby, Chats, and Profile destinations. `IndexedStack` keeps tab state while switching. Each destination loads one `module_entry.dart` file. A feature branch replaces its own entry's placeholder with its screen; no other feature file needs editing. The shell owns navigation only and makes no API calls.
-
-## Empty module screen: `lib/shared/presentation/module_placeholder_screen.dart`
-
-The original baseline used `Scaffold` and `EmptyState` placeholders for all four modules. Profile, Feed, and Chats now have working implementations; Nearby remains a starting view. Each feature owns its real loading, empty-response, and service-error states.
-
-## Shared components
-
-- `EmptyState` centers an icon, title, and message with a maximum width. It can later represent a real empty response; loading and error states need separate UI.
-- `ConnectlyTheme` supplies the dark navy and yellow app colors and styles the navigation bar.
-- `ConnectlyApp` creates `MaterialApp` and supplies `AuthScope` to all routes. On `auth`, its gate restores a validated account or opens Login. `main.dart` initializes Hive preferences, creates the API/session controller, and starts session restoration.
-
-For each future screen, document its widgets, actions, navigation, Hive values or cloud records, and loading, empty, and error states here. Feature repositories own data access. Include persistence and account/guest behavior when documenting a completed flow. A visual control should have real behavior before being presented as a working feature.
-
-Remaining authentication work includes profile editing, password recovery, and the planned face verification/liveness demonstration.
+Run `flutter test` and `flutter analyze`. The original API mock tests remain for reference, but the app defaults to SQLite. Follow the one-phone account-switching demonstration in [README.md](README.md). Cloud data is not imported and no demo records are seeded.

@@ -4,7 +4,8 @@ import 'package:connectly/features/auth/application/auth_controller.dart';
 import 'package:connectly/features/auth/presentation/auth_scope.dart';
 import 'package:connectly/features/feed/domain/feed_models.dart';
 import 'package:connectly/features/feed/presentation/feed_screen.dart';
-import 'package:connectly/features/feed/presentation/people_screen.dart';
+import 'package:connectly/features/discovery/presentation/people_screen.dart';
+import '../discovery/people_fakes.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../auth/auth_controller_test.dart'
@@ -35,6 +36,7 @@ void main() {
     expect(find.text('Friends'), findsOneWidget);
     expect(find.text('Following'), findsOneWidget);
     expect(find.text('Comment'), findsNothing);
+    expect(find.byKey(const Key('feed_people')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -104,10 +106,13 @@ void main() {
       ];
     await tester.pumpWidget(MaterialApp(
         theme: ConnectlyTheme.dark,
-        home: PeopleScreen(repository: repository)));
+        home: PeopleScreen(repository: FakePeopleRepository(repository))));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Accept request'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Accept request'));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Follow'));
     await tester.tap(find.text('Follow'));
     await tester.pumpAndSettle();
     expect(repository.actions, ['friend:other:accept', 'follow:other:true']);
@@ -136,7 +141,7 @@ void main() {
             data: MediaQuery.of(context)
                 .copyWith(textScaler: const TextScaler.linear(1.5)),
             child: child!),
-        home: PeopleScreen(repository: repository)));
+        home: PeopleScreen(repository: FakePeopleRepository(repository))));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });

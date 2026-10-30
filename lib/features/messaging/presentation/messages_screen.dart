@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../app/connectly_theme.dart';
+import '../../../app/local_data_scope.dart';
 import '../../auth/presentation/auth_scope.dart';
 import '../application/chat_controller.dart';
 import '../data/chat_local_store.dart';
-import '../data/messaging_api.dart';
 import '../domain/messaging_models.dart';
 import 'chat_widgets.dart';
 import 'conversation_screen.dart';
@@ -21,7 +21,6 @@ class MessagesScreen extends StatefulWidget {
 class _MessagesScreenState extends State<MessagesScreen>
     with WidgetsBindingObserver {
   MessagingRepository? _repository;
-  MessagingApi? _ownedApi;
   Future<ChatLocalStore>? _store;
   String? _userId;
   List<Conversation> _conversations = [];
@@ -47,8 +46,6 @@ class _MessagesScreenState extends State<MessagesScreen>
     final auth = AuthScope.maybeOf(context);
     if (_userId != auth?.user?.id) {
       _revision++;
-      _ownedApi?.close();
-      _ownedApi = null;
       _repository = null;
       _store = null;
       _userId = auth?.user?.id;
@@ -60,7 +57,7 @@ class _MessagesScreenState extends State<MessagesScreen>
       _search.clear();
       if (_userId != null) {
         _repository = widget.repository ??
-            (_ownedApi = MessagingApi(token: () => auth?.sessionToken));
+            LocalDataScope.of(context).messagingFor(_userId!);
       }
     }
     _visible = TickerMode.valuesOf(context).enabled &&
@@ -156,7 +153,6 @@ class _MessagesScreenState extends State<MessagesScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _poll?.cancel();
-    _ownedApi?.close();
     _search.dispose();
     super.dispose();
   }

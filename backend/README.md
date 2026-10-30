@@ -1,6 +1,8 @@
 # Connectly API — ASP.NET Core / .NET 10
 
-This is a controller-based C# Web API. Flutter calls this API; the API accesses the shared Turso database. It uses .NET 10's shared ASP.NET framework and `HttpClient`, with no Node runtime or third-party database SDK.
+**Historical reference:** the current presentation runs locally with sqflite/SQLite and Hive. The app no longer constructs these HTTP clients or calls this backend. See [current setup](../README.md). The documentation below describes the previous cloud implementation.
+
+This is the previous controller-based C# Web API that accessed Turso through .NET 10's shared ASP.NET framework and `HttpClient`.
 
 ## Source structure
 
