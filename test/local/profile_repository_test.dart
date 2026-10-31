@@ -99,7 +99,7 @@ void main() {
     final upgraded = await LocalDatabase.open(
         factory: databaseFactoryFfi, databasePath: filename);
     try {
-      expect(await upgraded.db.getVersion(), 3);
+      expect(await upgraded.db.getVersion(), 4);
       final profile = SqliteProfileRepository(upgraded, 'existing');
       expect((await profile.load()).name, 'Existing member');
       expect((await profile.load()).location!.latitude, 36.8625);

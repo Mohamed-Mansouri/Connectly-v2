@@ -33,8 +33,10 @@ class _LocalAppLoaderState extends State<LocalAppLoader> {
     } catch (_) {
       debugPrint('Remembered email is unavailable.');
     }
+    final authRepository = SqliteAuthRepository(database);
     final auth = AuthController(
-        repository: SqliteAuthRepository(database),
+        repository: authRepository,
+        biometricSessions: authRepository,
         store:
             const SecureAuthSessionStore(key: 'connectly_local_auth_session'),
         biometrics: DeviceBiometricAccess(),

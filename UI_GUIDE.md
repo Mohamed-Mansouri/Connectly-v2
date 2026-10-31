@@ -14,14 +14,14 @@ The app uses SQLite on the phone through `sqflite`. Hive holds preferences and m
 | --- | --- |
 | Login | Email/password, show/hide password, remembered email, sign in, create account, guest access. The subtitle explains that accounts/data stay on this phone. Validation, busy states, autofill, responsive scrolling, and a safe-area footer remain. |
 | Create account | Name/email/password/confirmation. Creates an account in local SQLite and signs in. Names require 2–80 characters, valid emails at most 254, passwords 8–128. Email is trimmed/lowercased; passwords are preserved exactly. |
-| Profile | Edit name, email, short bio, and a photo chosen from the phone's gallery. Set, share/hide, or remove your location from the Profile tab. Photos remain in local SQLite; Sign out returns to Login. Guests get a sign-in action. |
+| Profile | Edit name, email, short bio, and a photo chosen from the phone's gallery. Set, share/hide, or remove your location. Enable or disable fingerprint login. Photos remain in local SQLite; Sign out returns to Login with password and fingerprint choices when configured. Guests get a sign-in action. |
 | Feed | Connections/Friends/Following filters, chronological posts, composer, reaction totals, pull to refresh, and pagination. Empty-feed Find people switches to the People tab. Own posts appear in every filter. |
 | Create post | Trimmed text, 1–3,000 characters; inserts into SQLite. Failure preserves the open sheet's text. Closing discards this in-memory post draft. Own-post deletion requires confirmation and cascades reactions. |
 | People | Bottom tab replacing Nearby. Map opens first; name search, Discover/Friends/Friend requests/Following filters, list mode, and connection actions remain available. Follow/unfollow is one-way; friendship requires recipient acceptance. Tap existing markers to select people and reveal the same actions. Empty-map taps do not place pins. Switch accounts to demonstrate both sides. |
 | Your map pin | Tap the offline Ariana map or request a foreground GPS fix; Save explicitly. Share/hide/remove the pin. Denied permission, timeout, disabled location, and outside-coverage fixes leave manual placement available. No continuous tracking. |
 | Proximity | The default 1 km filter, plus optional 5/10/25 km and Any distance, measures straight-line distance from the account's saved pin and sorts nearest first. Without your own pin, the map shows all shared pins without claiming they are nearby. Unlocated/hidden accounts remain searchable in Any distance list mode but are excluded from radius matches and the map. |
 | Post reactions | Like, Love, Celebrate, Insightful; one reaction per account/post. Replace/remove changes local SQLite rows. Comments are deferred. |
-| Chats | Accepted friends appear directly above recent conversations. Tap a friend to open or create a direct chat. Search covers friends and chats; previews, unread counts, and refresh remain. Guest access does not query account data. |
+| Chats | Accepted friends appear directly above recent conversations. Tap a friend to open or create a direct chat. Text and voice clips, search, previews, unread counts, and refresh remain local. Guest access does not query account data. |
 | Existing groups | Group conversations remain in Recent chats. The former New conversation screen is no longer linked from Chats. |
 | Conversation | Incoming/outgoing text, sender names in groups, dates/times, earlier history, keyboard-aware composer, send/retry states, and member list. Messages require 1–4,000 trimmed characters. |
 
@@ -29,7 +29,7 @@ The navy/yellow theme and Urbanist type remain. Feed/Chats/Profile keep their st
 
 ## SQLite responsibilities
 
-[local_schema.dart](lib/shared/data/local_schema.dart) defines the original tables, version 2 location table, and version 3 profile table. [LocalDatabase](lib/shared/data/local_database.dart) opens `connectly_local.db` in `getDatabasesPath()`, enables foreign keys, and upgrades existing databases without replacing records. Creation/upgrades are transactional; repositories use bound query arguments and transactions for related writes. SQLite stores timestamps as UTC text and reaction/unread counts as integers.
+[local_schema.dart](lib/shared/data/local_schema.dart) defines the original tables, version 2 location table, version 3 profile table, and version 4 voice clip table. [LocalDatabase](lib/shared/data/local_database.dart) opens `connectly_local.db` in `getDatabasesPath()`, enables foreign keys, and upgrades existing databases without replacing records. Creation/upgrades are transactional; repositories use bound query arguments and transactions for related writes. SQLite stores timestamps as UTC text and reaction/unread counts as integers.
 
 | Tables | Repository / functions |
 | --- | --- |
@@ -37,7 +37,7 @@ The navy/yellow theme and Urbanist type remain. Feed/Chats/Profile keep their st
 | `user_profiles` and own location | [SqliteProfileRepository](lib/features/auth/data/profile_repository.dart): edit name/email/bio/photo and use the existing location repository to set or remove the pin. |
 | `posts`, `follows`, `friendships`, `post_reactions` | [SqliteFeedRepository](lib/features/feed/data/sqlite_feed_repository.dart): load/create/delete/react, people, follow, friendship. |
 | `user_locations` plus connections | [SqlitePeopleRepository](lib/features/discovery/data/people_repository.dart): search/filter with visible-location joins, Haversine distances, `saveLocation`, `removeLocation`. The current account can still use its hidden pin as its distance origin. Locations are SQLite data, not Hive cache. |
-| `conversations`, `conversation_members`, `messages` | [SqliteMessagingRepository](lib/features/messaging/data/sqlite_messaging_repository.dart): conversations/contacts/create/members, history/send/read. |
+| `conversations`, `conversation_members`, `messages`, `message_audio` | [SqliteMessagingRepository](lib/features/messaging/data/sqlite_messaging_repository.dart): conversations/contacts/create/members, text and voice history/send/read. |
 
 Feed visibility is still own posts plus followed authors/accepted friends. Chat history/send/read operations check membership. Authors/senders come from the currently authenticated account's repository. Messages are unique by conversation/sender/client ID so retrying does not duplicate them. Pagination uses timestamp/ID cursors for posts and integer sequences for messages. Unread cursors cannot advance past existing messages.
 

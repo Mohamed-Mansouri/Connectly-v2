@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:sqflite/sqflite.dart';
 import '../../../shared/data/local_database.dart';
 import '../domain/messaging_models.dart';
@@ -6,6 +7,14 @@ class SqliteMessagingRepository implements MessagingRepository {
   SqliteMessagingRepository(this.database, this.userId);
   final LocalDatabase database;
   final String userId;
+  static bool _sameBytes(Uint8List left, Uint8List right) {
+    if (left.length != right.length) return false;
+    for (var i = 0; i < left.length; i++) {
+      if (left[i] != right[i]) return false;
+    }
+    return true;
+  }
+
   static const _connected =
       '''(EXISTS(SELECT 1 FROM follows f WHERE f.follower_id = ? AND f.followed_id = u.id)
     OR EXISTS(SELECT 1 FROM friendships f WHERE f.status = 'accepted'
@@ -26,8 +35,10 @@ class SqliteMessagingRepository implements MessagingRepository {
     LEFT JOIN messages last ON last.sequence = (SELECT MAX(msg.sequence) FROM messages msg WHERE msg.conversation_id = c.id)
     LEFT JOIN users sender ON sender.id = last.sender_id''';
   static const _messageSelect =
-      '''SELECT msg.sequence, msg.client_id, msg.sender_id, u.name AS sender_name, msg.body, msg.created_at
-    FROM messages msg JOIN users u ON u.id = msg.sender_id''';
+      '''SELECT msg.sequence, msg.client_id, msg.sender_id, u.name AS sender_name,
+    msg.body, msg.created_at, audio.duration_ms
+    FROM messages msg JOIN users u ON u.id = msg.sender_id
+    LEFT JOIN message_audio audio ON audio.message_sequence = msg.sequence''';
   Conversation _conversation(Map<String, Object?> r) => Conversation(
       id: r['id'] as String,
       kind: r['kind'] as String,
@@ -46,7 +57,8 @@ class SqliteMessagingRepository implements MessagingRepository {
       clientId: r['client_id'] as String,
       sender: ChatPerson(r['sender_id'] as String, r['sender_name'] as String),
       body: r['body'] as String,
-      createdAt: DateTime.parse(r['created_at'] as String));
+      createdAt: DateTime.parse(r['created_at'] as String),
+      voiceDurationMs: r['duration_ms'] as int?);
   @override
   Future<List<Conversation>> conversations() async {
     final rows = await database.db.rawQuery(
@@ -216,12 +228,83 @@ class SqliteMessagingRepository implements MessagingRepository {
               '$_messageSelect WHERE msg.conversation_id = ? AND msg.sender_id = ? AND msg.client_id = ?',
               [conversationId, userId, clientId]))
           .single;
-      if (row['body'] != text) {
+      if (row['body'] != text || row['duration_ms'] != null) {
         throw const MessagingException(
             'This retry differs from the original message. Refresh the conversation.');
       }
       return _message(row);
     });
+  }
+
+  @override
+  Future<ChatMessage> sendVoice(String conversationId, String clientId,
+      Uint8List bytes, int durationMs) async {
+    if (clientId.isEmpty || clientId.length > 80) {
+      throw const MessagingException('Please retry this voice message.');
+    }
+    if (bytes.isEmpty ||
+        bytes.length > 2000000 ||
+        durationMs < 1 ||
+        durationMs > 120000) {
+      throw const MessagingException(
+          'Voice messages must be shorter than two minutes and 2 MB.');
+    }
+    return database.db.transaction((txn) async {
+      await _ensureMember(txn, conversationId);
+      final previous = await txn.rawQuery(
+          '$_messageSelect WHERE msg.conversation_id = ? AND msg.sender_id = ? AND msg.client_id = ?',
+          [conversationId, userId, clientId]);
+      if (previous.isNotEmpty && previous.single['duration_ms'] == null) {
+        throw const MessagingException(
+            'This retry differs from the original message.');
+      }
+      await txn.rawInsert('''INSERT INTO messages
+        (conversation_id, sender_id, client_id, body, created_at)
+        VALUES (?, ?, ?, 'Voice message', ?)
+        ON CONFLICT(conversation_id, sender_id, client_id) DO NOTHING''',
+          [conversationId, userId, clientId, localTimestamp()]);
+      final message = (await txn.rawQuery(
+              '$_messageSelect WHERE msg.conversation_id = ? AND msg.sender_id = ? AND msg.client_id = ?',
+              [conversationId, userId, clientId]))
+          .single;
+      if (message['body'] != 'Voice message') {
+        throw const MessagingException(
+            'This retry differs from the original message.');
+      }
+      final sequence = message['sequence'] as int;
+      await txn.rawInsert('''INSERT INTO message_audio
+        (message_sequence, data, duration_ms) VALUES (?, ?, ?)
+        ON CONFLICT(message_sequence) DO NOTHING''',
+          [sequence, bytes, durationMs]);
+      final stored = (await txn.query('message_audio',
+              columns: ['data', 'duration_ms'],
+              where: 'message_sequence = ?',
+              whereArgs: [sequence]))
+          .single;
+      final storedBytes = stored['data'] as Uint8List;
+      if (stored['duration_ms'] != durationMs ||
+          !_sameBytes(storedBytes, bytes)) {
+        throw const MessagingException(
+            'This retry differs from the original voice message.');
+      }
+      return _message((await txn
+              .rawQuery('$_messageSelect WHERE msg.sequence = ?', [sequence]))
+          .single);
+    });
+  }
+
+  @override
+  Future<Uint8List> voiceBytes(String conversationId, int sequence) async {
+    await _ensureMember(database.db, conversationId);
+    final rows = await database.db.rawQuery('''
+      SELECT audio.data FROM message_audio audio
+      JOIN messages msg ON msg.sequence = audio.message_sequence
+      WHERE msg.conversation_id = ? AND msg.sequence = ?
+    ''', [conversationId, sequence]);
+    if (rows.isEmpty) {
+      throw const MessagingException('This voice message is unavailable.');
+    }
+    return rows.single['data'] as Uint8List;
   }
 
   @override

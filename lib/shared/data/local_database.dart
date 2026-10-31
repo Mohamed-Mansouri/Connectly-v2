@@ -14,7 +14,7 @@ class LocalDatabase {
         path.join(await engine.getDatabasesPath(), 'connectly_local.db');
     final db = await engine.openDatabase(filename,
         options: OpenDatabaseOptions(
-          version: 3,
+          version: 4,
           onConfigure: (db) async => db.execute('PRAGMA foreign_keys = ON'),
           onCreate: (db, version) async {
             final batch = db.batch();
@@ -23,11 +23,13 @@ class LocalDatabase {
             }
             batch.execute(peopleLocationSchema);
             batch.execute(userProfileSchema);
+            batch.execute(messageAudioSchema);
             await batch.commit(noResult: true);
           },
           onUpgrade: (db, oldVersion, newVersion) async {
             if (oldVersion < 2) await db.execute(peopleLocationSchema);
             if (oldVersion < 3) await db.execute(userProfileSchema);
+            if (oldVersion < 4) await db.execute(messageAudioSchema);
           },
         ));
     return LocalDatabase(db);

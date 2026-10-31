@@ -190,11 +190,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       if (auth.biometricsEnabled) {
         await auth.disableBiometrics();
-        if (mounted) _notice('Fingerprint unlock turned off.');
+        if (mounted) _notice('Fingerprint login turned off.');
       } else {
         await auth.enableBiometrics();
         if (mounted && auth.biometricsEnabled) {
-          _notice('Fingerprint unlock is on for this saved session.');
+          _notice('Fingerprint login is ready on this phone.');
         }
       }
     } catch (error) {
@@ -376,13 +376,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text('Fingerprint unlock',
+                              const Text('Fingerprint login',
                                   style: TextStyle(
                                       fontSize: 20,
                                       fontWeight: FontWeight.w700)),
                               const SizedBox(height: 8),
                               const Text(
-                                  'Unlock your saved session after reopening the app. Your password remains available.'),
+                                  'Sign in with your fingerprint or password from the login screen.'),
                               const SizedBox(height: 12),
                               OutlinedButton.icon(
                                 key: const Key('biometric_toggle'),
@@ -390,17 +390,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 icon: const Icon(Icons.fingerprint),
                                 label: Text(AuthScope.maybeOf(context)!
                                         .biometricsEnabled
-                                    ? 'Turn off fingerprint unlock'
-                                    : 'Enable fingerprint unlock'),
+                                    ? 'Turn off fingerprint login'
+                                    : 'Enable fingerprint login'),
                               ),
-                              if (AuthScope.maybeOf(context)!
-                                  .biometricsEnabled)
-                                TextButton(
-                                  onPressed: _busy
-                                      ? null
-                                      : () => AuthScope.maybeOf(context)!.lock(),
-                                  child: const Text('Lock now'),
-                                ),
                             ]),
                       ),
                     ),

@@ -10,6 +10,7 @@ class LoginScreen extends StatefulWidget {
     required this.onContinueAsGuest,
     this.preferences,
     this.onSignIn,
+    this.onBiometricSignIn,
     this.onCreateAccount,
     this.initialMessage,
     super.key,
@@ -18,6 +19,7 @@ class LoginScreen extends StatefulWidget {
   final VoidCallback onContinueAsGuest;
   final LoginPreferences? preferences;
   final Future<void> Function(String email, String password)? onSignIn;
+  final Future<void> Function()? onBiometricSignIn;
   final VoidCallback? onCreateAccount;
   final String? initialMessage;
 
@@ -95,6 +97,28 @@ class _LoginScreenState extends State<LoginScreen> {
           _message = 'We couldn\'t sign you in. '
               'Check your details and try again.';
         });
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _submitBiometric() async {
+    final signIn = widget.onBiometricSignIn;
+    if (_busy || signIn == null) return;
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    try {
+      await signIn();
+    } on AuthException catch (error) {
+      if (mounted) setState(() => _message = error.message);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _message =
+            'Fingerprint login failed. Use your password and try again.');
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -315,6 +339,18 @@ class _LoginScreenState extends State<LoginScreen> {
                         ],
                       ),
               ),
+              if (widget.onBiometricSignIn != null) ...[
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  key: const Key('login_biometric'),
+                  onPressed: _busy ? null : _submitBiometric,
+                  icon: const Icon(Icons.fingerprint),
+                  label: const Text('Sign in with fingerprint'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

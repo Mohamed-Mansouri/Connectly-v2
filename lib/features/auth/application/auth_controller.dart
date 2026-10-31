@@ -9,52 +9,64 @@ class AuthController extends ChangeNotifier {
       {required AuthRepository repository,
       required AuthSessionStore store,
       BiometricAccess? biometrics,
-      BiometricSettingsStore? biometricSettings})
+      BiometricSettingsStore? biometricSettings,
+      BiometricSessionRepository? biometricSessions})
       : _repository = repository,
         _store = store,
         _biometrics = biometrics,
-        _biometricSettings = biometricSettings;
+        _biometricSettings = biometricSettings,
+        _biometricSessions = biometricSessions;
 
   final AuthRepository _repository;
   final AuthSessionStore _store;
   final BiometricAccess? _biometrics;
   final BiometricSettingsStore? _biometricSettings;
+  final BiometricSessionRepository? _biometricSessions;
   AuthUser? _user;
   String? _token;
   bool _restoring = true;
   String? _startupMessage;
-  bool _biometricsEnabled = false;
-  bool _locked = false;
+  BiometricCredential? _biometricCredential;
 
   AuthUser? get user => _user;
   // Local session credential; never persist passwords or this token in Hive.
   String? get sessionToken => _token;
   bool get restoring => _restoring;
   String? get startupMessage => _startupMessage;
-  bool get biometricsEnabled => _biometricsEnabled;
-  bool get locked => _locked;
+  bool get biometricsEnabled =>
+      _user != null && _biometricCredential?.userId == _user!.id;
+  bool get biometricLoginAvailable =>
+      _biometricCredential != null &&
+      _biometrics != null &&
+      _biometricSessions != null;
   bool get canConfigureBiometrics =>
-      _biometrics != null && _biometricSettings != null;
+      _biometrics != null &&
+      _biometricSettings != null &&
+      _biometricSessions != null;
 
   Future<void> restore() async {
     _restoring = true;
     _startupMessage = null;
-    _locked = false;
-    _biometricsEnabled = false;
+    _user = null;
+    _token = null;
+    _biometricCredential = null;
     notifyListeners();
     try {
+      _biometricCredential = await _biometricSettings?.readCredential();
       final token = await _store.readToken();
-      if (token != null) {
+      if (_biometricCredential != null) {
+        // A configured device starts at Login so either method can be chosen.
+        if (token != null) {
+          await _store.clear();
+          try {
+            await _repository.signOut(token);
+          } catch (_) {
+            // The unused session still expires in the repository.
+          }
+        }
+      } else if (token != null) {
         _user = await _repository.currentUser(token);
         _token = token;
-        try {
-          _biometricsEnabled =
-              await _biometricSettings?.readEnabledUserId() == _user!.id;
-          _locked = _biometricsEnabled;
-        } catch (_) {
-          // Require password if biometric settings cannot be read safely.
-          _locked = true;
-        }
       }
     } on AuthException catch (error) {
       _user = null;
@@ -96,8 +108,6 @@ class AuthController extends ChangeNotifier {
     }
     _token = session.token;
     _user = session.user;
-    _locked = false;
-    _biometricsEnabled = false;
     _startupMessage = null;
     notifyListeners();
   }
@@ -119,55 +129,96 @@ class AuthController extends ChangeNotifier {
 
   Future<void> enableBiometrics() async {
     final user = _user;
+    final sessionToken = _token;
     final biometrics = _biometrics;
     final settings = _biometricSettings;
-    if (user == null || biometrics == null || settings == null) {
-      throw const AuthException('Sign in to enable fingerprint unlock.');
+    final sessions = _biometricSessions;
+    if (user == null ||
+        sessionToken == null ||
+        biometrics == null ||
+        settings == null ||
+        sessions == null) {
+      throw const AuthException('Sign in to enable fingerprint login.');
     }
+    if (biometricsEnabled) return;
     try {
       if (!await biometrics.available()) {
         throw const AuthException(
-            'Enroll a fingerprint on this device before enabling unlock.');
+            'Enroll a fingerprint on this device before enabling login.');
       }
       if (!await biometrics.authenticate()) return;
-      await settings.setEnabledUserId(user.id);
+      if (_user?.id != user.id) return;
     } on AuthException {
       rethrow;
     } catch (_) {
       throw const AuthException('Fingerprint setup is unavailable right now.');
     }
-    if (_user?.id == user.id) {
-      _biometricsEnabled = true;
-      notifyListeners();
+    final newToken = await sessions.createBiometricToken(sessionToken);
+    final credential = BiometricCredential(userId: user.id, token: newToken);
+    try {
+      await settings.saveCredential(credential);
+    } catch (_) {
+      await sessions.revokeBiometricToken(newToken);
+      throw const AuthException(
+          'Could not save fingerprint login on this device.');
+    }
+    final previous = _biometricCredential;
+    _biometricCredential = credential;
+    notifyListeners();
+    if (previous != null) {
+      try {
+        await sessions.revokeBiometricToken(previous.token);
+      } catch (_) {
+        // The replaced credential still expires in the repository.
+      }
     }
   }
 
   Future<void> disableBiometrics() async {
-    await _biometricSettings?.setEnabledUserId(null);
-    _biometricsEnabled = false;
-    _locked = false;
+    final credential = _biometricCredential;
+    await _biometricSettings?.clear();
+    _biometricCredential = null;
     notifyListeners();
+    if (credential != null) {
+      await _biometricSessions?.revokeBiometricToken(credential.token);
+    }
   }
 
-  void lock() {
-    if (_user == null || !_biometricsEnabled) return;
-    _locked = true;
-    notifyListeners();
-  }
-
-  Future<bool> unlockWithBiometrics() async {
+  Future<void> signInWithBiometrics() async {
+    final credential = _biometricCredential;
     final biometrics = _biometrics;
-    if (!_locked || biometrics == null) return false;
+    final sessions = _biometricSessions;
+    if (credential == null || biometrics == null || sessions == null) {
+      throw const AuthException('Set up fingerprint login from Profile first.');
+    }
     try {
-      final verified = await biometrics.authenticate();
-      if (verified && _user != null) {
-        _locked = false;
-        notifyListeners();
+      if (!await biometrics.available()) {
+        throw const AuthException(
+            'Fingerprint is unavailable. Use your password instead.');
       }
-      return verified;
+      if (!await biometrics.authenticate()) {
+        throw const AuthException('Fingerprint was not recognized. Try again.');
+      }
+    } on AuthException {
+      rethrow;
     } catch (_) {
       throw const AuthException(
-          'Fingerprint unlock is unavailable. Use your password instead.');
+          'Fingerprint login is unavailable. Use your password instead.');
+    }
+    try {
+      final session = await sessions.signInWithBiometricToken(credential.token);
+      if (session.user.id != credential.userId) {
+        throw const AuthException('Fingerprint account changed.',
+            statusCode: 401);
+      }
+      await _accept(session);
+    } on AuthException catch (error) {
+      if (error.statusCode == 401) {
+        await disableBiometrics();
+        throw const AuthException(
+            'Fingerprint login expired. Sign in with your password and enable it again.');
+      }
+      rethrow;
     }
   }
 
@@ -175,15 +226,8 @@ class AuthController extends ChangeNotifier {
     final token = _token;
     // Clear saved credentials before releasing the current account.
     await _store.clear();
-    try {
-      await _biometricSettings?.setEnabledUserId(null);
-    } catch (_) {
-      // The primary session still signs out even if this preference cannot be cleared.
-    }
     _token = null;
     _user = null;
-    _locked = false;
-    _biometricsEnabled = false;
     notifyListeners();
     if (token != null) {
       try {

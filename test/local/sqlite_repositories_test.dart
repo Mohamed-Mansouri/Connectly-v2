@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:connectly/features/auth/data/local_passwords.dart';
 import 'package:connectly/features/auth/data/sqlite_auth_repository.dart';
 import 'package:connectly/features/auth/domain/auth_models.dart';
@@ -35,7 +36,7 @@ void main() {
             .values
             .single,
         1);
-    expect(await database.db.getVersion(), 3);
+    expect(await database.db.getVersion(), 4);
     await expectLater(
         database.db.insert('posts', {
           'id': 'invalid',
@@ -65,12 +66,18 @@ void main() {
     final login =
         await auth.signIn('MEMBER@example.test', ' password with spaces ');
     expect((await auth.currentUser(login.token)).id, first.user.id);
+    final biometricToken = await auth.createBiometricToken(login.token);
     await auth.signOut(login.token);
     await expectLater(
         auth.currentUser(login.token),
         throwsA(isA<AuthException>()
             .having((e) => e.statusCode, 'expired session', 401)));
     expect((await auth.currentUser(first.token)).id, first.user.id);
+    final biometricLogin = await auth.signInWithBiometricToken(biometricToken);
+    expect(biometricLogin.user.id, first.user.id);
+    await auth.revokeBiometricToken(biometricToken);
+    await expectLater(auth.signInWithBiometricToken(biometricToken),
+        throwsA(isA<AuthException>()));
     await database.db
         .update('auth_sessions', {'expires_at': '2000-01-01T00:00:00.000Z'});
     await expectLater(
@@ -200,6 +207,32 @@ void main() {
     expect((await chatsB.conversations()).single.unreadCount, 1);
   });
 
+  test('voice messages persist, deduplicate, and respect membership', () async {
+    final a = await account('Alpha');
+    final b = await account('Beta');
+    final c = await account('Gamma');
+    await SqliteFeedRepository(database, a.user.id).follow(b.user.id, true);
+    final sender = SqliteMessagingRepository(database, a.user.id);
+    final recipient = SqliteMessagingRepository(database, b.user.id);
+    final outsider = SqliteMessagingRepository(database, c.user.id);
+    final chat = await sender.create(kind: 'direct', memberIds: [b.user.id]);
+    final bytes = Uint8List.fromList([1, 2, 3, 4]);
+    final id = localId();
+    final voice = await sender.sendVoice(chat.id, id, bytes, 1200);
+    expect(voice.isVoice, isTrue);
+    expect(voice.voiceDurationMs, 1200);
+    expect((await recipient.messages(chat.id)).messages.single.isVoice, isTrue);
+    expect(await recipient.voiceBytes(chat.id, voice.sequence), bytes);
+    expect((await sender.sendVoice(chat.id, id, bytes, 1200)).sequence,
+        voice.sequence);
+    await expectLater(
+        sender.sendVoice(chat.id, id, Uint8List.fromList([9]), 1200),
+        throwsA(isA<MessagingException>()));
+    await expectLater(outsider.voiceBytes(chat.id, voice.sequence),
+        throwsA(isA<MessagingException>()));
+    expect((await recipient.conversations()).single.lastBody, 'Voice message');
+  });
+
   test(
       'group membership and both message cursors work with a real local database',
       () async {
@@ -281,18 +314,19 @@ void main() {
       final conversation =
           await chats.create(kind: 'direct', memberIds: [b.user.id]);
       await chats.send(conversation.id, localId(), 'Saved on this phone');
+      final voice = await chats.sendVoice(
+          conversation.id, localId(), Uint8List.fromList([7, 8, 9]), 1800);
       await fileDb.close();
       fileDb = await LocalDatabase.open(
           factory: databaseFactoryFfi, databasePath: filename);
       expect((await SqliteAuthRepository(fileDb).currentUser(a.token)).id,
           a.user.id);
-      expect(
-          (await SqliteMessagingRepository(fileDb, b.user.id)
-                  .messages(conversation.id))
-              .messages
-              .single
-              .body,
-          'Saved on this phone');
+      final reopened = SqliteMessagingRepository(fileDb, b.user.id);
+      final messages = (await reopened.messages(conversation.id)).messages;
+      expect(messages.first.body, 'Saved on this phone');
+      expect(messages.last.isVoice, isTrue);
+      expect(await reopened.voiceBytes(conversation.id, voice.sequence),
+          [7, 8, 9]);
       expect((await fileDb.db.query('users')).length, 2);
     } finally {
       await fileDb?.close();

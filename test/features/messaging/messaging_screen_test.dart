@@ -1,7 +1,9 @@
+import 'dart:typed_data';
 import 'package:connectly/app/connectly_theme.dart';
 import 'package:connectly/features/auth/application/auth_controller.dart';
 import 'package:connectly/features/auth/presentation/auth_scope.dart';
 import 'package:connectly/features/messaging/data/chat_local_store.dart';
+import 'package:connectly/features/messaging/data/voice_recorder.dart';
 import 'package:connectly/features/messaging/domain/messaging_models.dart';
 import 'package:connectly/features/messaging/presentation/conversation_screen.dart';
 import 'package:connectly/features/messaging/presentation/messages_screen.dart';
@@ -12,7 +14,51 @@ import '../auth/auth_controller_test.dart'
     show FakeAuthRepository, MemorySessionStore;
 import 'messaging_fakes.dart';
 
+class FakeVoiceRecorder implements VoiceRecorder {
+  bool recording = false;
+  @override
+  Future<void> start() async => recording = true;
+  @override
+  Future<VoiceClip> stop() async {
+    recording = false;
+    return VoiceClip(Uint8List.fromList([1, 2, 3]), 1500);
+  }
+
+  @override
+  Future<void> cancel() async => recording = false;
+  @override
+  Future<void> dispose() async {}
+}
+
 void main() {
+  testWidgets('recorded voice clip can be sent from a conversation',
+      (tester) async {
+    final repository = FakeMessagingRepository();
+    final recorder = FakeVoiceRecorder();
+    await tester.pumpWidget(MaterialApp(
+        theme: ConnectlyTheme.dark,
+        home: ConversationScreen(
+            conversation: testConversation,
+            repository: repository,
+            store: MemoryChatLocalStore(),
+            userId: 'user-1',
+            voiceRecorder: recorder)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('voice_record')));
+    await tester.pump();
+    expect(recorder.recording, isTrue);
+    await tester.tap(find.byKey(const Key('voice_stop')));
+    await tester.pump();
+    expect(recorder.recording, isFalse);
+    expect(find.text('Voice clip · 0:02'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('voice_send')));
+    await tester.pumpAndSettle();
+    expect(repository.voiceClips.values.single, [1, 2, 3]);
+    expect(find.byKey(const Key('voice_play_1')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('Chats lists friends directly and opens a chat on tap',
       (tester) async {
     final repository = FakeMessagingRepository()..inbox = [];

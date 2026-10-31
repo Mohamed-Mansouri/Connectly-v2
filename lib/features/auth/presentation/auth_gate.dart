@@ -4,7 +4,6 @@ import '../../../app/app_shell.dart';
 import '../application/auth_controller.dart';
 import '../data/login_preferences.dart';
 import 'login_screen.dart';
-import 'biometric_lock_screen.dart';
 import 'signup_screen.dart';
 
 class AuthGate extends StatelessWidget {
@@ -22,15 +21,14 @@ class AuthGate extends StatelessWidget {
               body: Center(child: CircularProgressIndicator()),
             );
           }
-          if (controller.user != null) {
-            return controller.locked
-                ? BiometricLockScreen(controller: controller)
-                : const AppShell();
-          }
+          if (controller.user != null) return const AppShell();
           return LoginScreen(
             preferences: preferences,
             initialMessage: controller.startupMessage,
             onSignIn: controller.signIn,
+            onBiometricSignIn: controller.biometricLoginAvailable
+                ? controller.signInWithBiometrics
+                : null,
             onCreateAccount: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (_) => SignupScreen(onSignUp: controller.signUp),

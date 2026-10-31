@@ -4,9 +4,11 @@ import 'package:cryptography/cryptography.dart';
 import 'package:sqflite/sqflite.dart';
 import '../../../shared/data/local_database.dart';
 import '../domain/auth_models.dart';
+import 'biometric_access.dart';
 import 'local_passwords.dart';
 
-class SqliteAuthRepository implements AuthRepository {
+class SqliteAuthRepository
+    implements AuthRepository, BiometricSessionRepository {
   SqliteAuthRepository(this.database, {LocalPasswords? passwords})
       : _passwords = passwords ?? LocalPasswords();
   final LocalDatabase database;
@@ -29,7 +31,8 @@ class SqliteAuthRepository implements AuthRepository {
 
   Future<String> _hashToken(String token) async =>
       base64Encode((await Sha256().hash(utf8.encode(token))).bytes);
-  Future<AuthSession> _newSession(DatabaseExecutor db, AuthUser user) async {
+  Future<AuthSession> _newSession(DatabaseExecutor db, AuthUser user,
+      {Duration lifetime = const Duration(days: 7)}) async {
     final random = Random.secure();
     final token = base64UrlEncode(List.generate(32, (_) => random.nextInt(256)))
         .replaceAll('=', '');
@@ -38,7 +41,7 @@ class SqliteAuthRepository implements AuthRepository {
       'token_hash': await _hashToken(token),
       'user_id': user.id,
       'created_at': localTimestamp(now),
-      'expires_at': localTimestamp(now.add(const Duration(days: 7)))
+      'expires_at': localTimestamp(now.add(lifetime))
     });
     return AuthSession(token: token, user: user);
   }
@@ -96,6 +99,24 @@ class SqliteAuthRepository implements AuthRepository {
     }
     return _newSession(database.db, _user(rows.first));
   }
+
+  @override
+  Future<String> createBiometricToken(String sessionToken) async {
+    final user = await currentUser(sessionToken);
+    return (await _newSession(database.db, user,
+            lifetime: const Duration(days: 90)))
+        .token;
+  }
+
+  @override
+  Future<AuthSession> signInWithBiometricToken(String biometricToken) async {
+    final user = await currentUser(biometricToken);
+    return _newSession(database.db, user);
+  }
+
+  @override
+  Future<void> revokeBiometricToken(String biometricToken) =>
+      signOut(biometricToken);
 
   @override
   Future<AuthUser> currentUser(String token) async {

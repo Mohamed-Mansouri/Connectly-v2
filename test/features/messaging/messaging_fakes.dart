@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:connectly/features/messaging/domain/messaging_models.dart';
 
 final testConversation = Conversation(
@@ -8,14 +9,18 @@ final testConversation = Conversation(
     createdAt: DateTime.utc(2026, 10, 24),
     peerId: 'other');
 ChatMessage testMessage(int sequence,
-        {String? clientId, String senderId = 'other', String? body}) =>
+        {String? clientId,
+        String senderId = 'other',
+        String? body,
+        int? voiceDurationMs}) =>
     ChatMessage(
         sequence: sequence,
         clientId: clientId ?? 'message-$sequence',
         sender: ChatPerson(
             senderId, senderId == 'user-1' ? 'Test Member' : 'Another Member'),
         body: body ?? 'Message $sequence',
-        createdAt: DateTime.utc(2026, 10, 24, 12, 0, sequence));
+        createdAt: DateTime.utc(2026, 10, 24, 12, 0, sequence),
+        voiceDurationMs: voiceDurationMs);
 
 class FakeMessagingRepository implements MessagingRepository {
   List<ChatMessage> history = [];
@@ -31,6 +36,7 @@ class FakeMessagingRepository implements MessagingRepository {
   int messageCalls = 0;
   final sentIds = <String>[];
   final readMarkers = <int>[];
+  final voiceClips = <int, Uint8List>{};
   String? createdKind;
   List<String>? createdMembers;
   String? createdTitle;
@@ -83,6 +89,26 @@ class FakeMessagingRepository implements MessagingRepository {
     history.add(message);
     return message;
   }
+
+  @override
+  Future<ChatMessage> sendVoice(String conversationId, String clientId,
+      Uint8List bytes, int durationMs) async {
+    sentIds.add(clientId);
+    final existing = history.where((message) => message.clientId == clientId);
+    if (existing.isNotEmpty) return existing.single;
+    final message = testMessage(history.isEmpty ? 1 : history.last.sequence + 1,
+        clientId: clientId,
+        senderId: 'user-1',
+        body: 'Voice message',
+        voiceDurationMs: durationMs);
+    history.add(message);
+    voiceClips[message.sequence] = bytes;
+    return message;
+  }
+
+  @override
+  Future<Uint8List> voiceBytes(String conversationId, int sequence) async =>
+      voiceClips[sequence]!;
 
   @override
   Future<void> markRead(String conversationId, int throughSequence) async {

@@ -1,5 +1,19 @@
+import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
+import '../domain/auth_models.dart';
+
+class BiometricCredential {
+  const BiometricCredential({required this.userId, required this.token});
+  final String userId;
+  final String token;
+}
+
+abstract class BiometricSessionRepository {
+  Future<String> createBiometricToken(String sessionToken);
+  Future<AuthSession> signInWithBiometricToken(String biometricToken);
+  Future<void> revokeBiometricToken(String biometricToken);
+}
 
 abstract class BiometricAccess {
   Future<bool> available();
@@ -18,14 +32,15 @@ class DeviceBiometricAccess implements BiometricAccess {
 
   @override
   Future<bool> authenticate() => _localAuthentication.authenticate(
-        localizedReason: 'Unlock your saved Connectly session',
+        localizedReason: 'Sign in to Connectly with your fingerprint',
         biometricOnly: true,
       );
 }
 
 abstract class BiometricSettingsStore {
-  Future<String?> readEnabledUserId();
-  Future<void> setEnabledUserId(String? userId);
+  Future<BiometricCredential?> readCredential();
+  Future<void> saveCredential(BiometricCredential credential);
+  Future<void> clear();
 }
 
 class SecureBiometricSettingsStore implements BiometricSettingsStore {
@@ -34,13 +49,27 @@ class SecureBiometricSettingsStore implements BiometricSettingsStore {
   }) : _storage = storage;
 
   final FlutterSecureStorage _storage;
-  static const _key = 'connectly_biometric_user_id';
+  static const _key = 'connectly_biometric_credential';
+  static const _legacyKey = 'connectly_biometric_user_id';
 
   @override
-  Future<String?> readEnabledUserId() => _storage.read(key: _key);
+  Future<BiometricCredential?> readCredential() async {
+    final encoded = await _storage.read(key: _key);
+    if (encoded == null) {
+      await _storage.delete(key: _legacyKey);
+      return null;
+    }
+    final data = jsonDecode(encoded) as Map<String, dynamic>;
+    return BiometricCredential(
+        userId: data['userId'] as String, token: data['token'] as String);
+  }
 
   @override
-  Future<void> setEnabledUserId(String? userId) => userId == null
-      ? _storage.delete(key: _key)
-      : _storage.write(key: _key, value: userId);
+  Future<void> saveCredential(BiometricCredential credential) => _storage.write(
+      key: _key,
+      value:
+          jsonEncode({'userId': credential.userId, 'token': credential.token}));
+
+  @override
+  Future<void> clear() => _storage.delete(key: _key);
 }

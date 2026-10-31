@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 class ChatPerson {
   const ChatPerson(this.id, this.name);
   final String id;
@@ -50,18 +52,22 @@ class ChatMessage {
       required this.clientId,
       required this.sender,
       required this.body,
-      required this.createdAt});
+      required this.createdAt,
+      this.voiceDurationMs});
   final int sequence;
   final String clientId;
   final ChatPerson sender;
   final String body;
   final DateTime createdAt;
+  final int? voiceDurationMs;
+  bool get isVoice => voiceDurationMs != null;
   factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
       sequence: json['sequence'] as int,
       clientId: json['clientId'] as String,
       sender: ChatPerson.fromJson(json['sender'] as Map<String, dynamic>),
       body: json['body'] as String,
-      createdAt: DateTime.parse(json['createdAt'] as String));
+      createdAt: DateTime.parse(json['createdAt'] as String),
+      voiceDurationMs: json['voiceDurationMs'] as int?);
 }
 
 class MessagePage {
@@ -87,5 +93,8 @@ abstract class MessagingRepository {
   Future<MessagePage> messages(String conversationId,
       {int? before, int? after});
   Future<ChatMessage> send(String conversationId, String clientId, String body);
+  Future<ChatMessage> sendVoice(
+      String conversationId, String clientId, Uint8List bytes, int durationMs);
+  Future<Uint8List> voiceBytes(String conversationId, int sequence);
   Future<void> markRead(String conversationId, int throughSequence);
 }

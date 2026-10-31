@@ -151,7 +151,7 @@ void main() {
     final upgraded = await LocalDatabase.open(
         factory: databaseFactoryFfi, databasePath: filename);
     try {
-      expect(await upgraded.db.getVersion(), 3);
+      expect(await upgraded.db.getVersion(), 4);
       expect(
           (await upgraded.db.query('users')).single['name'], 'Existing member');
       expect((await upgraded.db.query('auth_sessions')).single['token_hash'],

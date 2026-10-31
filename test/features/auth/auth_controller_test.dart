@@ -1,6 +1,10 @@
 import 'package:connectly/features/auth/application/auth_controller.dart';
 import 'package:connectly/features/auth/data/auth_session_store.dart';
+import 'package:connectly/features/auth/data/biometric_access.dart';
+import 'package:connectly/features/auth/presentation/auth_gate.dart';
+import 'package:connectly/features/auth/presentation/login_screen.dart';
 import 'package:connectly/features/auth/domain/auth_models.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 final testUser = AuthUser(
@@ -24,6 +28,53 @@ class MemorySessionStore implements AuthSessionStore {
   @override
   Future<void> clear() async {
     token = null;
+  }
+}
+
+class FakeBiometricAccess implements BiometricAccess {
+  bool isAvailable = true;
+  bool verified = true;
+  int prompts = 0;
+  @override
+  Future<bool> available() async => isAvailable;
+  @override
+  Future<bool> authenticate() async {
+    prompts++;
+    return verified;
+  }
+}
+
+class MemoryBiometricSettings implements BiometricSettingsStore {
+  BiometricCredential? credential;
+  @override
+  Future<BiometricCredential?> readCredential() async => credential;
+  @override
+  Future<void> saveCredential(BiometricCredential credential) async =>
+      this.credential = credential;
+  @override
+  Future<void> clear() async => credential = null;
+}
+
+class FakeBiometricSessions implements BiometricSessionRepository {
+  final revoked = <String>[];
+  bool expired = false;
+  @override
+  Future<String> createBiometricToken(String sessionToken) async {
+    expect(sessionToken, 'session-1');
+    return 'biometric-token';
+  }
+
+  @override
+  Future<AuthSession> signInWithBiometricToken(String biometricToken) async {
+    if (expired || biometricToken != 'biometric-token') {
+      throw const AuthException('Expired', statusCode: 401);
+    }
+    return AuthSession(token: 'fingerprint-session', user: testUser);
+  }
+
+  @override
+  Future<void> revokeBiometricToken(String biometricToken) async {
+    revoked.add(biometricToken);
   }
 }
 
@@ -51,6 +102,81 @@ class FakeAuthRepository implements AuthRepository {
 }
 
 void main() {
+  testWidgets('login offers fingerprint beside the password form',
+      (tester) async {
+    final store = MemorySessionStore();
+    final settings = MemoryBiometricSettings()
+      ..credential =
+          const BiometricCredential(userId: 'user-1', token: 'biometric-token');
+    final biometric = FakeBiometricAccess()..verified = false;
+    final auth = AuthController(
+        repository: FakeAuthRepository(),
+        store: store,
+        biometrics: biometric,
+        biometricSettings: settings,
+        biometricSessions: FakeBiometricSessions());
+    await auth.restore();
+    await tester.pumpWidget(MaterialApp(home: AuthGate(controller: auth)));
+    expect(find.byType(LoginScreen), findsOneWidget);
+    expect(find.byKey(const Key('login_submit')), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('login_biometric')));
+    await tester.tap(find.byKey(const Key('login_biometric')));
+    await tester.pumpAndSettle();
+    expect(biometric.prompts, 1);
+    expect(find.text('Fingerprint was not recognized. Try again.'),
+        findsOneWidget);
+    expect(auth.user, isNull);
+    await tester.pumpWidget(const SizedBox());
+    auth.dispose();
+  });
+
+  test('fingerprint login survives sign-out and creates a new normal session',
+      () async {
+    final store = MemorySessionStore();
+    final settings = MemoryBiometricSettings();
+    final biometric = FakeBiometricAccess();
+    final sessions = FakeBiometricSessions();
+    final first = AuthController(
+        repository: FakeAuthRepository(),
+        store: store,
+        biometrics: biometric,
+        biometricSettings: settings,
+        biometricSessions: sessions);
+    await first.signIn('member@example.com', 'password');
+    await first.enableBiometrics();
+    expect(settings.credential?.userId, testUser.id);
+    expect(first.biometricsEnabled, isTrue);
+    await first.signOut();
+    expect(store.token, isNull);
+    expect(settings.credential, isNotNull);
+    first.dispose();
+
+    final restored = AuthController(
+        repository: FakeAuthRepository(),
+        store: store,
+        biometrics: biometric,
+        biometricSettings: settings,
+        biometricSessions: sessions);
+    await restored.restore();
+    expect(restored.user, isNull);
+    expect(restored.biometricLoginAvailable, isTrue);
+    biometric.verified = false;
+    await expectLater(
+        restored.signInWithBiometrics(), throwsA(isA<AuthException>()));
+    expect(restored.user, isNull);
+    biometric.verified = true;
+    await restored.signInWithBiometrics();
+    expect(restored.user?.id, testUser.id);
+    expect(store.token, 'fingerprint-session');
+    await restored.signOut();
+    expect(store.token, isNull);
+    expect(settings.credential, isNotNull);
+    await restored.disableBiometrics();
+    expect(settings.credential, isNull);
+    expect(sessions.revoked, ['biometric-token']);
+    restored.dispose();
+  });
+
   test('sign-in stores the session before exposing an authenticated user',
       () async {
     final store = MemorySessionStore();

@@ -62,3 +62,9 @@ const userProfileSchema = '''CREATE TABLE user_profiles (
   bio TEXT NOT NULL DEFAULT '' CHECK(length(bio) <= 160),
   photo BLOB CHECK(photo IS NULL OR length(photo) <= 2000000),
   updated_at TEXT NOT NULL)''';
+
+// Version 4 keeps recorded clips separate from message list queries.
+const messageAudioSchema = '''CREATE TABLE message_audio (
+  message_sequence INTEGER PRIMARY KEY REFERENCES messages(sequence) ON DELETE CASCADE,
+  data BLOB NOT NULL CHECK(length(data) BETWEEN 1 AND 2000000),
+  duration_ms INTEGER NOT NULL CHECK(duration_ms BETWEEN 1 AND 120000))''';

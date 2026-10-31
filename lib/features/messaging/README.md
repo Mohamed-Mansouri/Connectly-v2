@@ -1,6 +1,6 @@
 # Messaging module
 
-The Chats tab now uses `SqliteMessagingRepository` and the phone's `connectly_local.db` for direct/group text conversations. It needs no API, internet, or PC connection. Create multiple accounts on this phone and switch between them to demonstrate messages; other phones have independent databases.
+The Chats tab now uses `SqliteMessagingRepository` and the phone's `connectly_local.db` for direct/group text and voice conversations. It needs no API, internet, or PC connection. Create multiple accounts on this phone and switch between them to demonstrate messages; other phones have independent databases.
 
 ## Views and functions
 
@@ -9,6 +9,7 @@ The Chats tab now uses `SqliteMessagingRepository` and the phone's `connectly_lo
 | Chats | Accepted friends are listed directly above recent conversations. Tap a friend to open their existing direct chat or create it on first tap. Search covers friends and chats; previews, unread counts, and pull to refresh remain. Guests see a sign-in invitation. |
 | Existing groups | Group conversations remain in Recent chats. The previous New conversation screen is retained in source but is no longer linked from Chats. |
 | Conversation | Incoming/outgoing bubbles, real sender names in groups, dates/times, earlier history, keyboard-aware composer, send progress, failed-message retry, and saved drafts. Text is trimmed and limited to 4,000 characters. |
+| Voice clips | Tap the microphone, record up to 60 seconds, stop, preview, discard, or send. Received clips play inside the chat. Each clip is limited to 2 MB and stored in local SQLite. Unsent voice previews last only while the chat screen is open. |
 | Members | Read-only names of conversation participants; membership is checked by the SQLite repository. |
 
 The inbox refreshes SQLite every 10 seconds while visible; an active conversation refreshes every 5 seconds and updates its local read cursor. Refresh pauses in the background or behind another route. These are local database reads with no HTTP requests. Inbox lists the most recent 100 conversations; contact searches return up to 50. History loads 50 messages per page using SQLite sequence cursors.
@@ -33,10 +34,10 @@ Sending first saves a pending message with a stable UUID, then inserts it into S
 
 On restart, pending items become **Not confirmed** with Retry; they are not automatically resent. Local write failure retains pending text in memory and stops that send. If Hive cannot open, temporary memory keeps the screen usable with a notice. Account restoration and full SQLite history work offline after restart.
 
-SQLite holds `conversations`, `conversation_members` (including read cursors), and `messages`. See [local architecture and presentation steps](../../../README.md).
+SQLite holds `conversations`, `conversation_members` (including read cursors), `messages`, and `message_audio` clips. See [local architecture and presentation steps](../../../README.md).
 
 ## Verification and future work
 
 Run `flutter test` and `flutter analyze`. The real SQLite tests cover direct/group membership, retry deduplication, unread markers, both cursors, and database reopening. The app-level test renders Feed/Chats with HTTP clients blocked. Earlier backend integration scripts remain reference code and are not used for this local presentation.
 
-Attachments, voice recording/transcription/translation, message search, group membership management, editing/deletion, push notifications, and persistent history caching remain planned. The advanced demonstration will record a voice message, transcribe/translate it, and make its text searchable. The supplied group chat reference remains on `archive/sprint-0` at `design/reference/group_chat.png`.
+Other attachments, voice transcription/translation, message search, group membership management, editing/deletion, push notifications, and persistent history caching remain planned. The supplied group chat reference remains on `archive/sprint-0` at `design/reference/group_chat.png`.

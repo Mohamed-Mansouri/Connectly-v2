@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:typed_data';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import '../../../app/connectly_theme.dart';
 import '../application/chat_controller.dart';
 import '../data/chat_local_store.dart';
+import '../data/voice_recorder.dart';
 import '../domain/messaging_models.dart';
 import 'chat_widgets.dart';
 
@@ -13,12 +16,14 @@ class ConversationScreen extends StatefulWidget {
       required this.store,
       required this.userId,
       this.temporaryStorage = false,
+      this.voiceRecorder,
       super.key});
   final Conversation conversation;
   final MessagingRepository repository;
   final ChatLocalStore store;
   final String userId;
   final bool temporaryStorage;
+  final VoiceRecorder? voiceRecorder;
   @override
   State<ConversationScreen> createState() => _ConversationScreenState();
 }
@@ -31,6 +36,24 @@ class _ConversationScreenState extends State<ConversationScreen>
   bool _resumed = true;
   bool _current = true;
   bool _draftLoaded = false;
+  VoiceRecorder? _recorder;
+  VoiceRecorder get _voiceRecorder =>
+      _recorder ??= widget.voiceRecorder ?? DeviceVoiceRecorder();
+  VoiceClip? _voiceDraft;
+  String? _voiceClientId;
+  bool _recording = false;
+  bool _voiceBusy = false;
+  DateTime? _recordStarted;
+  Timer? _recordTimer;
+  AudioPlayer? _player;
+  StreamSubscription<void>? _playerDone;
+  int? _playingVoice;
+
+  String _duration(int milliseconds) {
+    final seconds = (milliseconds / 1000).ceil();
+    return '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -55,6 +78,112 @@ class _ConversationScreenState extends State<ConversationScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _resumed = state == AppLifecycleState.resumed;
     _chat.setActive(_resumed && _current);
+    if (!_resumed && _recording) unawaited(_cancelRecording());
+  }
+
+  void _voiceNotice(Object error) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(chatError(error))));
+  }
+
+  Future<void> _startRecording() async {
+    if (_recording || _voiceBusy || _voiceDraft != null) return;
+    setState(() => _voiceBusy = true);
+    try {
+      await _voiceRecorder.start();
+      if (!mounted) {
+        await _voiceRecorder.cancel();
+        return;
+      }
+      _recordStarted = DateTime.now();
+      _recordTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!mounted || !_recording) return;
+        if (DateTime.now().difference(_recordStarted!).inSeconds >= 60) {
+          unawaited(_stopRecording());
+        } else {
+          setState(() {});
+        }
+      });
+      setState(() => _recording = true);
+    } catch (error) {
+      _voiceNotice(error);
+    } finally {
+      if (mounted) setState(() => _voiceBusy = false);
+    }
+  }
+
+  Future<void> _stopRecording() async {
+    if (!_recording || _voiceBusy) return;
+    _recordTimer?.cancel();
+    setState(() => _voiceBusy = true);
+    try {
+      final clip = await _voiceRecorder.stop();
+      if (!mounted) return;
+      setState(() {
+        _recording = false;
+        _voiceDraft = clip;
+        _voiceClientId = newMessageId();
+      });
+    } catch (error) {
+      if (mounted) setState(() => _recording = false);
+      _voiceNotice(error);
+    } finally {
+      if (mounted) setState(() => _voiceBusy = false);
+    }
+  }
+
+  Future<void> _cancelRecording() async {
+    _recordTimer?.cancel();
+    if (mounted) setState(() => _recording = false);
+    try {
+      await _voiceRecorder.cancel();
+    } catch (error) {
+      _voiceNotice(error);
+    }
+  }
+
+  Future<void> _sendVoice() async {
+    final clip = _voiceDraft;
+    final clientId = _voiceClientId;
+    if (_voiceBusy || clip == null || clientId == null) return;
+    setState(() => _voiceBusy = true);
+    try {
+      await widget.repository.sendVoice(
+          widget.conversation.id, clientId, clip.bytes, clip.durationMs);
+      if (!mounted) return;
+      setState(() {
+        _voiceDraft = null;
+        _voiceClientId = null;
+      });
+      await _chat.sync();
+    } catch (error) {
+      _voiceNotice(error);
+    } finally {
+      if (mounted) setState(() => _voiceBusy = false);
+    }
+  }
+
+  Future<void> _playVoice(int sequence, {Uint8List? draftBytes}) async {
+    try {
+      final player = _player ??= AudioPlayer();
+      _playerDone ??= player.onPlayerComplete.listen((_) {
+        if (mounted) setState(() => _playingVoice = null);
+      });
+      if (_playingVoice == sequence) {
+        await player.stop();
+        if (mounted) setState(() => _playingVoice = null);
+        return;
+      }
+      final bytes = draftBytes ??
+          await widget.repository.voiceBytes(widget.conversation.id, sequence);
+      await player.stop();
+      await player.play(BytesSource(bytes, mimeType: 'audio/mp4'));
+      if (mounted) setState(() => _playingVoice = sequence);
+    } catch (error) {
+      if (mounted) setState(() => _playingVoice = null);
+      _voiceNotice(error);
+    }
   }
 
   void _changed() {
@@ -95,7 +224,10 @@ class _ConversationScreenState extends State<ConversationScreen>
   }
 
   Widget _bubble(String body, bool own, String name, DateTime time,
-          {String? status, Widget? action}) =>
+          {String? status,
+          Widget? action,
+          int? voiceSequence,
+          int? voiceDurationMs}) =>
       Align(
         alignment: own ? Alignment.centerRight : Alignment.centerLeft,
         child: Container(
@@ -120,11 +252,28 @@ class _ConversationScreenState extends State<ConversationScreen>
                             color: ConnectlyTheme.yellow,
                             fontWeight: FontWeight.w700,
                             fontSize: 12))),
-              SelectableText(body,
-                  style: TextStyle(
-                      color: own ? ConnectlyTheme.navy : Colors.white,
-                      fontSize: 16,
-                      height: 1.4)),
+              if (voiceSequence != null)
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  IconButton(
+                    key: Key('voice_play_$voiceSequence'),
+                    tooltip: _playingVoice == voiceSequence
+                        ? 'Stop voice message'
+                        : 'Play voice message',
+                    onPressed: () => _playVoice(voiceSequence),
+                    icon: Icon(_playingVoice == voiceSequence
+                        ? Icons.stop_rounded
+                        : Icons.play_arrow_rounded),
+                  ),
+                  Text('Voice message · ${_duration(voiceDurationMs ?? 0)}',
+                      style: TextStyle(
+                          color: own ? ConnectlyTheme.navy : Colors.white)),
+                ])
+              else
+                SelectableText(body,
+                    style: TextStyle(
+                        color: own ? ConnectlyTheme.navy : Colors.white,
+                        fontSize: 16,
+                        height: 1.4)),
               const SizedBox(height: 5),
               Text(
                   '${messageDate(time)} · ${messageTime(time)}${status == null ? '' : ' · $status'}',
@@ -141,6 +290,10 @@ class _ConversationScreenState extends State<ConversationScreen>
     WidgetsBinding.instance.removeObserver(this);
     _chat.removeListener(_changed);
     _chat.dispose();
+    _recordTimer?.cancel();
+    if (_recorder != null) unawaited(_recorder!.dispose());
+    unawaited(_playerDone?.cancel());
+    if (_player != null) unawaited(_player!.dispose());
     _input.dispose();
     _scroll.dispose();
     super.dispose();
@@ -277,8 +430,61 @@ class _ConversationScreenState extends State<ConversationScreen>
                                                 message.sender.id ==
                                                     widget.userId,
                                                 message.sender.name,
-                                                message.createdAt));
+                                                message.createdAt,
+                                                voiceSequence: message.isVoice
+                                                    ? message.sequence
+                                                    : null,
+                                                voiceDurationMs:
+                                                    message.voiceDurationMs));
                                       })),
+                      if (_recording)
+                        Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Row(children: [
+                            const Icon(Icons.mic, color: Colors.redAccent),
+                            const SizedBox(width: 8),
+                            Expanded(
+                                child: Text(
+                                    'Recording ${_duration(DateTime.now().difference(_recordStarted!).inMilliseconds)}')),
+                            TextButton(
+                                onPressed: _voiceBusy ? null : _cancelRecording,
+                                child: const Text('Cancel')),
+                            FilledButton(
+                                key: const Key('voice_stop'),
+                                onPressed: _voiceBusy ? null : _stopRecording,
+                                child: const Text('Stop')),
+                          ]),
+                        ),
+                      if (_voiceDraft != null)
+                        Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Row(children: [
+                            IconButton(
+                                key: const Key('voice_preview'),
+                                tooltip: 'Play recording',
+                                onPressed: () => _playVoice(-1,
+                                    draftBytes: _voiceDraft!.bytes),
+                                icon: Icon(_playingVoice == -1
+                                    ? Icons.stop_rounded
+                                    : Icons.play_arrow_rounded)),
+                            Expanded(
+                                child: Text(
+                                    'Voice clip · ${_duration(_voiceDraft!.durationMs)}')),
+                            IconButton(
+                                tooltip: 'Discard recording',
+                                onPressed: _voiceBusy
+                                    ? null
+                                    : () => setState(() {
+                                          _voiceDraft = null;
+                                          _voiceClientId = null;
+                                        }),
+                                icon: const Icon(Icons.delete_outline)),
+                            FilledButton(
+                                key: const Key('voice_send'),
+                                onPressed: _voiceBusy ? null : _sendVoice,
+                                child: const Text('Send')),
+                          ]),
+                        ),
                       Container(
                           padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
                           color: ConnectlyTheme.surface,
@@ -309,6 +515,16 @@ class _ConversationScreenState extends State<ConversationScreen>
                                                     4000
                                                 ? 'Please shorten this message.'
                                                 : null))),
+                                IconButton(
+                                    key: const Key('voice_record'),
+                                    tooltip: 'Record voice message',
+                                    onPressed: _chat.initializing ||
+                                            _voiceBusy ||
+                                            _recording ||
+                                            _voiceDraft != null
+                                        ? null
+                                        : _startRecording,
+                                    icon: const Icon(Icons.mic_none_rounded)),
                                 IconButton.filled(
                                     key: const Key('send_message'),
                                     tooltip: 'Send message',

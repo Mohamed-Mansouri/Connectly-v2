@@ -6,9 +6,9 @@ On startup, the app adds six clearly labeled, fictional **Demo** accounts with s
 
 ## Working features
 
-- Registration, login/logout, offline session restoration, Profile, and guest navigation.
+- Registration, password or optional fingerprint login, logout, Profile, and guest navigation.
 - Text posts, friends/following filters, friend requests, four reactions, and own-post deletion.
-- Direct/group text chats, conversation history, unread counts, pagination, saved drafts, and retry deduplication.
+- Direct/group chats with text and short voice clips, conversation history, unread counts, pagination, saved text drafts, and retry deduplication.
 - People opens on an offline Ariana map showing shared locations within 1 km of your saved pin. Search, friend requests, friends/following, list mode, and wider distance filters remain available. Profile supports name, email, bio, photo, and location editing. Comments, media posts, and advanced features remain planned.
 
 ## Storage and source map
@@ -19,7 +19,9 @@ On startup, the app adds six clearly labeled, fictional **Demo** accounts with s
 | Remembered email | Hive `auth_preferences` / `remembered_email` | [preferences](lib/features/auth/data/login_preferences.dart) |
 | Account/conversation drafts and pending sends | Hive `messaging_local` / `<userId>:<conversationId>` | [chat store](lib/features/messaging/data/chat_local_store.dart) |
 | Current local-session token | Platform secure storage, `connectly_local_auth_session` | [session store](lib/features/auth/data/auth_session_store.dart) |
+| Fingerprint login account ID and separate device token | Platform secure storage, `connectly_biometric_credential` | [biometric access](lib/features/auth/data/biometric_access.dart) |
 | Short bio and profile photo | `user_profiles` in the phone's SQLite database | [profile repository](lib/features/auth/data/profile_repository.dart) |
+| Voice clips | `message_audio` in the same SQLite database | [messaging repository](lib/features/messaging/data/sqlite_messaging_repository.dart) |
 
 `main.dart -> LocalAppLoader -> LocalDatabase -> SqliteAuthRepository / SqliteFeedRepository / SqliteMessagingRepository`
 
@@ -49,11 +51,12 @@ The APK is `build/app/outputs/flutter-apk/app-debug.apk`. The presentation targe
 
 1. Create Alice, publish a post, then sign out in Profile.
 2. Create Bob. Open the People tab, follow Alice; view/react to her post and send a friend request.
-3. As Bob, start a direct chat with Alice and send a message.
-4. Sign out, sign in as Alice, accept Bob's request, read his message, and reply.
+3. Sign out, sign in as Alice, and accept Bob's request.
+4. Open Chats, tap Bob in Friends, and send a text or voice message.
 5. Switch back to Bob to show the reply/unread state. Restart to demonstrate persistence.
-6. For a group, create a third local account, connect with it, and select two people when creating the group.
-7. In People, use **Set my location** to save a pin near Ariana center or ESPRIT Charguia (or use your phone's GPS). The discovery map opens first and shows shared pins within 1 km. Tap a demo person's marker and **Add friend**. Sign out, sign in as that demo person, and accept the request. The discovery map selects existing pins; manual placement is only in the separate location setup sheet.
+6. In Profile, set a pin near Ariana center or ESPRIT Charguia (or use your phone's GPS). The People map shows shared pins within 1 km. Tap a demo person's marker and **Add friend**. Sign out, sign in as that demo person, and accept the request. The discovery map selects existing pins; manual placement is only in the separate location setup sheet.
+
+To use fingerprint login, enroll a fingerprint in the phone's Android settings, sign in with your password, and choose **Enable fingerprint login** in Profile. After signing out or restarting the app, Login shows both password sign-in and **Sign in with fingerprint**. Signing out keeps fingerprint login available; **Turn off fingerprint login** in Profile revokes it. The separate device token expires after 90 days, after which password sign-in and setup are needed again. If you enabled the earlier fingerprint lock, enable fingerprint login once from Profile. Voice clips are recorded from the chat microphone, stopped, previewed, and sent locally. Clips are limited to 60 seconds and 2 MB. An unsent voice preview is kept only while that chat screen stays open.
 
 ### Demo account sign-in
 
