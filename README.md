@@ -9,7 +9,7 @@ On startup, the app adds six clearly labeled, fictional **Demo** accounts with s
 - Registration, login/logout, offline session restoration, Profile, and guest navigation.
 - Text posts, friends/following filters, friend requests, four reactions, and own-post deletion.
 - Direct/group text chats, conversation history, unread counts, pagination, saved drafts, and retry deduplication.
-- People opens on an offline Ariana map showing shared locations within 1 km of your saved pin. Search, friend requests, friends/following, list mode, and wider distance filters remain available. Comments, media, profile editing, and advanced features remain planned.
+- People opens on an offline Ariana map showing shared locations within 1 km of your saved pin. Search, friend requests, friends/following, list mode, and wider distance filters remain available. Profile supports name, email, bio, photo, and location editing. Comments, media posts, and advanced features remain planned.
 
 ## Storage and source map
 
@@ -19,6 +19,7 @@ On startup, the app adds six clearly labeled, fictional **Demo** accounts with s
 | Remembered email | Hive `auth_preferences` / `remembered_email` | [preferences](lib/features/auth/data/login_preferences.dart) |
 | Account/conversation drafts and pending sends | Hive `messaging_local` / `<userId>:<conversationId>` | [chat store](lib/features/messaging/data/chat_local_store.dart) |
 | Current local-session token | Platform secure storage, `connectly_local_auth_session` | [session store](lib/features/auth/data/auth_session_store.dart) |
+| Short bio and profile photo | `user_profiles` in the phone's SQLite database | [profile repository](lib/features/auth/data/profile_repository.dart) |
 
 `main.dart -> LocalAppLoader -> LocalDatabase -> SqliteAuthRepository / SqliteFeedRepository / SqliteMessagingRepository`
 
@@ -56,7 +57,7 @@ The APK is `build/app/outputs/flutter-apk/app-debug.apk`. The presentation targe
 
 ### Demo account sign-in
 
-All six fictional profiles use the password **`ConnectlyDemo!2026`**. Their local email addresses are `demo.amal@connectly.invalid`, `demo.sami@connectly.invalid`, `demo.ines@connectly.invalid` (Ariana center), and `demo.nour@connectly.invalid`, `demo.youssef@connectly.invalid`, `demo.meriem@connectly.invalid` (ESPRIT Charguia). They start without friendships; requests can be accepted after switching accounts. They are recreated if removed, but an existing demo account's location and relationships are not reset at startup.
+All six fictional profiles use the password **`12345678`**. Their local email addresses are `demo.amal@connectly.invalid`, `demo.sami@connectly.invalid`, `demo.ines@connectly.invalid` (Ariana center), and `demo.nour@connectly.invalid`, `demo.youssef@connectly.invalid`, `demo.meriem@connectly.invalid` (ESPRIT Charguia). They start without friendships; requests can be accepted after switching accounts. Existing demo passwords are updated on the next app launch; locations and relationships are not reset at startup.
 
 The map covers **Ariana city** (36.84–36.90°N, 10.15–10.21°E), with bundled OpenStreetMap geometry and visible attribution. It does not download tiles. Saved locations are optional per-account SQLite rows, with a hide/remove option and no background tracking. Pins represent accounts on this phone, not live nearby devices. Without your own saved location, the map shows all shared pins and asks you to set yours before calling anyone nearby. Existing pins outside Ariana stay saved and can be repositioned using Edit my pin. See [map credits/source](assets/maps/README.md).
 

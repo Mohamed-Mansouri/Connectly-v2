@@ -14,7 +14,7 @@ The app uses SQLite on the phone through `sqflite`. Hive holds preferences and m
 | --- | --- |
 | Login | Email/password, show/hide password, remembered email, sign in, create account, guest access. The subtitle explains that accounts/data stay on this phone. Validation, busy states, autofill, responsive scrolling, and a safe-area footer remain. |
 | Create account | Name/email/password/confirmation. Creates an account in local SQLite and signs in. Names require 2–80 characters, valid emails at most 254, passwords 8–128. Email is trimmed/lowercased; passwords are preserved exactly. |
-| Profile | Displays the current local user's name/email; Sign out returns to Login. Guests get a sign-in action. Editing remains planned. |
+| Profile | Edit name, email, short bio, and a photo chosen from the phone's gallery. Set, share/hide, or remove your location from the Profile tab. Photos remain in local SQLite; Sign out returns to Login. Guests get a sign-in action. |
 | Feed | Connections/Friends/Following filters, chronological posts, composer, reaction totals, pull to refresh, and pagination. Empty-feed Find people switches to the People tab. Own posts appear in every filter. |
 | Create post | Trimmed text, 1–3,000 characters; inserts into SQLite. Failure preserves the open sheet's text. Closing discards this in-memory post draft. Own-post deletion requires confirmation and cascades reactions. |
 | People | Bottom tab replacing Nearby. Map opens first; name search, Discover/Friends/Friend requests/Following filters, list mode, and connection actions remain available. Follow/unfollow is one-way; friendship requires recipient acceptance. Tap existing markers to select people and reveal the same actions. Empty-map taps do not place pins. Switch accounts to demonstrate both sides. |
@@ -29,11 +29,12 @@ The navy/yellow theme and Urbanist type remain. Feed/Chats/Profile keep their st
 
 ## SQLite responsibilities
 
-[local_schema.dart](lib/shared/data/local_schema.dart) defines the original tables and version 2 location table. [LocalDatabase](lib/shared/data/local_database.dart) opens `connectly_local.db` in `getDatabasesPath()`, enables foreign keys, and upgrades version 1 by adding `user_locations` without replacing existing records. Creation/upgrades are transactional; repositories use bound query arguments and transactions for related writes. SQLite stores timestamps as UTC text and reaction/unread counts as integers.
+[local_schema.dart](lib/shared/data/local_schema.dart) defines the original tables, version 2 location table, and version 3 profile table. [LocalDatabase](lib/shared/data/local_database.dart) opens `connectly_local.db` in `getDatabasesPath()`, enables foreign keys, and upgrades existing databases without replacing records. Creation/upgrades are transactional; repositories use bound query arguments and transactions for related writes. SQLite stores timestamps as UTC text and reaction/unread counts as integers.
 
 | Tables | Repository / functions |
 | --- | --- |
 | `users`, `auth_sessions` | [SqliteAuthRepository](lib/features/auth/data/sqlite_auth_repository.dart): `signUp`, `signIn`, `currentUser`, `signOut`. |
+| `user_profiles` and own location | [SqliteProfileRepository](lib/features/auth/data/profile_repository.dart): edit name/email/bio/photo and use the existing location repository to set or remove the pin. |
 | `posts`, `follows`, `friendships`, `post_reactions` | [SqliteFeedRepository](lib/features/feed/data/sqlite_feed_repository.dart): load/create/delete/react, people, follow, friendship. |
 | `user_locations` plus connections | [SqlitePeopleRepository](lib/features/discovery/data/people_repository.dart): search/filter with visible-location joins, Haversine distances, `saveLocation`, `removeLocation`. The current account can still use its hidden pin as its distance origin. Locations are SQLite data, not Hive cache. |
 | `conversations`, `conversation_members`, `messages` | [SqliteMessagingRepository](lib/features/messaging/data/sqlite_messaging_repository.dart): conversations/contacts/create/members, history/send/read. |

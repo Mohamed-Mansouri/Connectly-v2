@@ -2,7 +2,8 @@ import '../../../shared/data/local_database.dart';
 import '../../auth/data/local_passwords.dart';
 
 /// Fictional, on-phone accounts for the Ariana presentation.
-const demoPeoplePassword = 'ConnectlyDemo!2026';
+const demoPeoplePassword = '12345678';
+const _passwordRevision = '12345678-v1';
 
 const _demoPeople = <(String, String, String, double, double)>[
   (
@@ -52,25 +53,40 @@ const _demoPeople = <(String, String, String, double, double)>[
 /// Adds missing demo accounts once; existing profiles, pins, and links are kept.
 Future<void> seedDemoPeople(LocalDatabase database,
     {LocalPasswords? passwords}) async {
+  await database.db.execute('''CREATE TABLE IF NOT EXISTS demo_seed_state (
+    key TEXT PRIMARY KEY, value TEXT NOT NULL)''');
+  final state = await database.db.query('demo_seed_state',
+      columns: ['value'],
+      where: 'key = ?',
+      whereArgs: ['password_revision'],
+      limit: 1);
+  final rotatePasswords =
+      state.isEmpty || state.single['value'] != _passwordRevision;
   final missing = <(String, String, String, double, double)>[];
   for (final person in _demoPeople) {
     final rows = await database.db.query('users',
         columns: ['id'], where: 'id = ?', whereArgs: [person.$1], limit: 1);
     if (rows.isEmpty) missing.add(person);
   }
-  if (missing.isEmpty) return;
+  if (missing.isEmpty && !rotatePasswords) return;
 
   final hasher = passwords ?? LocalPasswords();
   final hashes = <String, String>{};
-  for (final person in missing) {
+  for (final person in rotatePasswords ? _demoPeople : missing) {
     hashes[person.$1] = await hasher.hash(demoPeoplePassword);
   }
 
   await database.db.transaction((txn) async {
-    for (final person in missing) {
+    for (final person in _demoPeople) {
       final rows = await txn.query('users',
           columns: ['id'], where: 'id = ?', whereArgs: [person.$1], limit: 1);
-      if (rows.isNotEmpty) continue;
+      if (rows.isNotEmpty) {
+        if (rotatePasswords) {
+          await txn.update('users', {'password_hash': hashes[person.$1]},
+              where: 'id = ?', whereArgs: [person.$1]);
+        }
+        continue;
+      }
       final timestamp = localTimestamp();
       await txn.insert('users', {
         'id': person.$1,
@@ -87,5 +103,9 @@ Future<void> seedDemoPeople(LocalDatabase database,
         'updated_at': timestamp,
       });
     }
+    await txn.rawInsert(
+        '''INSERT INTO demo_seed_state (key, value) VALUES (?, ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value''',
+        ['password_revision', _passwordRevision]);
   });
 }

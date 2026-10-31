@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 import '../shared/data/local_database.dart';
 import '../features/discovery/data/people_repository.dart';
+import '../features/auth/data/profile_repository.dart';
 import '../features/feed/data/sqlite_feed_repository.dart';
 import '../features/feed/domain/feed_models.dart';
 import '../features/messaging/data/sqlite_messaging_repository.dart';
@@ -20,6 +21,8 @@ class LocalDataScope extends InheritedWidget {
       SqliteFeedRepository(database, userId);
   PeopleRepository peopleFor(String userId) =>
       SqlitePeopleRepository(database, userId);
+  ProfileRepository profileFor(String userId) =>
+      SqliteProfileRepository(database, userId);
   MessagingRepository messagingFor(String userId) =>
       SqliteMessagingRepository(database, userId);
   @override

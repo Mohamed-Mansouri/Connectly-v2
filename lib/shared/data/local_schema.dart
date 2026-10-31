@@ -55,3 +55,10 @@ const peopleLocationSchema = '''CREATE TABLE user_locations (
   longitude REAL NOT NULL CHECK(longitude BETWEEN -180 AND 180),
   visible INTEGER NOT NULL DEFAULT 1 CHECK(visible IN (0, 1)),
   updated_at TEXT NOT NULL)''';
+
+// Version 3 adds optional profile details and an on-device profile photo.
+const userProfileSchema = '''CREATE TABLE user_profiles (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  bio TEXT NOT NULL DEFAULT '' CHECK(length(bio) <= 160),
+  photo BLOB CHECK(photo IS NULL OR length(photo) <= 2000000),
+  updated_at TEXT NOT NULL)''';

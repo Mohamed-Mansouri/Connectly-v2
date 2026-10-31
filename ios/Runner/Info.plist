@@ -48,7 +48,7 @@
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Flutter course app need access to your gallery to add photo for post</string>
+	<string>Choose a photo from your gallery for your Connectly profile.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Flutter course app need access to your camera to add photo for post</string>
 	<key>NSLocationWhenInUseUsageDescription</key>

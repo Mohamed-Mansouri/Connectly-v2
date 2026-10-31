@@ -84,6 +84,13 @@ class AuthController extends ChangeNotifier {
     await _accept(await _repository.signUp(name, email, password));
   }
 
+  Future<void> refreshUser() async {
+    final token = _token;
+    if (token == null) return;
+    _user = await _repository.currentUser(token);
+    notifyListeners();
+  }
+
   Future<void> signOut() async {
     final token = _token;
     // Clear saved credentials before releasing the current account.
