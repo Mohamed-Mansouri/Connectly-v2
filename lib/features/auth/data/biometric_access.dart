@@ -59,9 +59,16 @@ class SecureBiometricSettingsStore implements BiometricSettingsStore {
       await _storage.delete(key: _legacyKey);
       return null;
     }
-    final data = jsonDecode(encoded) as Map<String, dynamic>;
-    return BiometricCredential(
-        userId: data['userId'] as String, token: data['token'] as String);
+    try {
+      final data = jsonDecode(encoded) as Map<String, dynamic>;
+      final userId = data['userId'] as String;
+      final token = data['token'] as String;
+      if (userId.isEmpty || token.isEmpty) throw const FormatException();
+      return BiometricCredential(userId: userId, token: token);
+    } catch (_) {
+      await clear();
+      return null;
+    }
   }
 
   @override

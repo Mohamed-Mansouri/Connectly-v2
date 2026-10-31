@@ -180,7 +180,11 @@ class AuthController extends ChangeNotifier {
     _biometricCredential = null;
     notifyListeners();
     if (credential != null) {
-      await _biometricSessions?.revokeBiometricToken(credential.token);
+      try {
+        await _biometricSessions?.revokeBiometricToken(credential.token);
+      } catch (_) {
+        // The revoked local credential can no longer be accessed from this app.
+      }
     }
   }
 

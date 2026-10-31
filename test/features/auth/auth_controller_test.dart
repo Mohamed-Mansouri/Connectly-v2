@@ -104,7 +104,7 @@ class FakeAuthRepository implements AuthRepository {
 void main() {
   testWidgets('login offers fingerprint beside the password form',
       (tester) async {
-    final store = MemorySessionStore();
+    final store = MemorySessionStore()..token = 'saved-session';
     final settings = MemoryBiometricSettings()
       ..credential =
           const BiometricCredential(userId: 'user-1', token: 'biometric-token');
@@ -116,6 +116,7 @@ void main() {
         biometricSettings: settings,
         biometricSessions: FakeBiometricSessions());
     await auth.restore();
+    expect(store.token, isNull);
     await tester.pumpWidget(MaterialApp(home: AuthGate(controller: auth)));
     expect(find.byType(LoginScreen), findsOneWidget);
     expect(find.byKey(const Key('login_submit')), findsOneWidget);
@@ -171,10 +172,33 @@ void main() {
     await restored.signOut();
     expect(store.token, isNull);
     expect(settings.credential, isNotNull);
+    await restored.signIn('member@example.com', 'password');
+    expect(restored.biometricsEnabled, isTrue);
+    await restored.signOut();
     await restored.disableBiometrics();
     expect(settings.credential, isNull);
     expect(sessions.revoked, ['biometric-token']);
     restored.dispose();
+  });
+
+  test('expired fingerprint credential returns to password login', () async {
+    final settings = MemoryBiometricSettings()
+      ..credential =
+          const BiometricCredential(userId: 'user-1', token: 'biometric-token');
+    final sessions = FakeBiometricSessions()..expired = true;
+    final auth = AuthController(
+        repository: FakeAuthRepository(),
+        store: MemorySessionStore(),
+        biometrics: FakeBiometricAccess(),
+        biometricSettings: settings,
+        biometricSessions: sessions);
+    await auth.restore();
+    await expectLater(
+        auth.signInWithBiometrics(), throwsA(isA<AuthException>()));
+    expect(auth.biometricLoginAvailable, isFalse);
+    expect(settings.credential, isNull);
+    expect(auth.user, isNull);
+    auth.dispose();
   });
 
   test('sign-in stores the session before exposing an authenticated user',

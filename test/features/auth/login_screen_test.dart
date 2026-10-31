@@ -175,6 +175,7 @@ void main() {
           child: LoginScreen(
             preferences: MemoryLoginPreferences(),
             onContinueAsGuest: () {},
+            onBiometricSignIn: () async {},
           ),
         ),
       ),
@@ -183,6 +184,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(find.byKey(const Key('login_submit')).hitTestable(), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('login_biometric')));
+    await tester.pumpAndSettle();
+    expect(
+        find.byKey(const Key('login_biometric')).hitTestable(), findsOneWidget);
   });
 
   testWidgets('guest action stays above the system navigation area',
