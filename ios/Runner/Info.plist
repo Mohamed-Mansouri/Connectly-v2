@@ -49,6 +49,10 @@
 	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Choose a photo from your gallery for your Connectly profile.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Unlock your saved Connectly session with Face ID.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Record a voice message for your Connectly chats.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Flutter course app need access to your camera to add photo for post</string>
 	<key>NSLocationWhenInUseUsageDescription</key>

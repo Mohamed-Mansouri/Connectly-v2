@@ -183,6 +183,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _toggleBiometrics() async {
+    final auth = AuthScope.maybeOf(context);
+    if (auth == null || _busy) return;
+    setState(() => _busy = true);
+    try {
+      if (auth.biometricsEnabled) {
+        await auth.disableBiometrics();
+        if (mounted) _notice('Fingerprint unlock turned off.');
+      } else {
+        await auth.enableBiometrics();
+        if (mounted && auth.biometricsEnabled) {
+          _notice('Fingerprint unlock is on for this saved session.');
+        }
+      }
+    } catch (error) {
+      if (mounted) _notice(_message(error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   void dispose() {
     _revision++;
@@ -346,6 +367,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ]),
                     ),
                   ),
+                  if (AuthScope.maybeOf(context)?.canConfigureBiometrics ==
+                      true) ...[
+                    const SizedBox(height: 12),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(18),
+                        child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Fingerprint unlock',
+                                  style: TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w700)),
+                              const SizedBox(height: 8),
+                              const Text(
+                                  'Unlock your saved session after reopening the app. Your password remains available.'),
+                              const SizedBox(height: 12),
+                              OutlinedButton.icon(
+                                key: const Key('biometric_toggle'),
+                                onPressed: _busy ? null : _toggleBiometrics,
+                                icon: const Icon(Icons.fingerprint),
+                                label: Text(AuthScope.maybeOf(context)!
+                                        .biometricsEnabled
+                                    ? 'Turn off fingerprint unlock'
+                                    : 'Enable fingerprint unlock'),
+                              ),
+                              if (AuthScope.maybeOf(context)!
+                                  .biometricsEnabled)
+                                TextButton(
+                                  onPressed: _busy
+                                      ? null
+                                      : () => AuthScope.maybeOf(context)!.lock(),
+                                  child: const Text('Lock now'),
+                                ),
+                            ]),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 24),
                   OutlinedButton.icon(
                     onPressed: _busy ? null : _signOut,

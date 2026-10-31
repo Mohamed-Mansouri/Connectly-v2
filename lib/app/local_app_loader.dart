@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../features/auth/application/auth_controller.dart';
 import '../features/auth/data/auth_session_store.dart';
+import '../features/auth/data/biometric_access.dart';
 import '../features/auth/data/login_preferences.dart';
 import '../features/auth/data/sqlite_auth_repository.dart';
 import '../features/discovery/data/demo_people_seeder.dart';
@@ -35,7 +36,9 @@ class _LocalAppLoaderState extends State<LocalAppLoader> {
     final auth = AuthController(
         repository: SqliteAuthRepository(database),
         store:
-            const SecureAuthSessionStore(key: 'connectly_local_auth_session'));
+            const SecureAuthSessionStore(key: 'connectly_local_auth_session'),
+        biometrics: DeviceBiometricAccess(),
+        biometricSettings: const SecureBiometricSettingsStore());
     unawaited(auth.restore());
     return _LocalAppData(database, auth, preferences);
   }

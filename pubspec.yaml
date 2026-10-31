@@ -21,6 +21,10 @@ dependencies:
   latlong2: ^0.10.1
   geolocator: ^14.1.2
   image_picker: ^1.2.4
+  local_auth: ^3.0.2
+  record: ^7.1.2
+  audioplayers: ^6.8.1
+  path_provider: ^2.1.6
 
 dev_dependencies:
   flutter_test:
