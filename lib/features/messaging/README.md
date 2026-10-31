@@ -6,19 +6,19 @@ The Chats tab now uses `SqliteMessagingRepository` and the phone's `connectly_lo
 
 | View | Working behavior |
 | --- | --- |
-| Inbox | Recent conversations, local name search, last-message preview, unread count, pull to refresh, and New conversation. Guests see a sign-in invitation. |
-| New conversation | Select one friend/followed person for a direct chat, or name a group and select 2–19 others. Existing direct chats reopen rather than duplicate. Members are fixed at creation in this version. |
+| Chats | Accepted friends are listed directly above recent conversations. Tap a friend to open their existing direct chat or create it on first tap. Search covers friends and chats; previews, unread counts, and pull to refresh remain. Guests see a sign-in invitation. |
+| Existing groups | Group conversations remain in Recent chats. The previous New conversation screen is retained in source but is no longer linked from Chats. |
 | Conversation | Incoming/outgoing bubbles, real sender names in groups, dates/times, earlier history, keyboard-aware composer, send progress, failed-message retry, and saved drafts. Text is trimmed and limited to 4,000 characters. |
 | Members | Read-only names of conversation participants; membership is checked by the SQLite repository. |
 
 The inbox refreshes SQLite every 10 seconds while visible; an active conversation refreshes every 5 seconds and updates its local read cursor. Refresh pauses in the background or behind another route. These are local database reads with no HTTP requests. Inbox lists the most recent 100 conversations; contact searches return up to 50. History loads 50 messages per page using SQLite sequence cursors.
 
-New chats can include accepted friends or accounts the creator follows on this phone. Existing membership remains valid after a connection is removed. Only members can read/write the conversation or update their own unread cursor. The repository uses the signed-in account as sender and exposes names/IDs without password fields.
+The Chats friend list includes accepted friendships only. The repository still permits direct chats with followed accounts and preserves existing membership after a connection is removed. Only members can read/write the conversation or update their own unread cursor. The repository uses the signed-in account as sender and exposes names/IDs without password fields.
 
 ## Source map
 
 - `presentation/messages_screen.dart`: inbox, active-tab polling, authenticated repository, local store initialization, and route creation.
-- `presentation/new_conversation_screen.dart`: contact search, direct/group selection, validation, creation.
+- `presentation/new_conversation_screen.dart`: retained group creation screen, currently not linked from Chats.
 - `presentation/conversation_screen.dart`: bubbles, composer, pending retries, lifecycle handling, and member sheet.
 - `application/chat_controller.dart`: draft restoration, history merge/pagination, incremental polling, read markers, send/retry, and serialized local writes.
 - `data/sqlite_messaging_repository.dart`: local SQLite contacts, conversations, messages, membership, unread counts, and retry deduplication. The old HTTP repository remains reference code.

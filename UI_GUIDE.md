@@ -21,8 +21,8 @@ The app uses SQLite on the phone through `sqflite`. Hive holds preferences and m
 | Your map pin | Tap the offline Ariana map or request a foreground GPS fix; Save explicitly. Share/hide/remove the pin. Denied permission, timeout, disabled location, and outside-coverage fixes leave manual placement available. No continuous tracking. |
 | Proximity | The default 1 km filter, plus optional 5/10/25 km and Any distance, measures straight-line distance from the account's saved pin and sorts nearest first. Without your own pin, the map shows all shared pins without claiming they are nearby. Unlocated/hidden accounts remain searchable in Any distance list mode but are excluded from radius matches and the map. |
 | Post reactions | Like, Love, Celebrate, Insightful; one reaction per account/post. Replace/remove changes local SQLite rows. Comments are deferred. |
-| Chats | Member conversations, title search, last-message previews, unread counts, refresh, and New conversation. Guest access does not query account data. |
-| New conversation | Select friends/followed accounts on this phone: one for direct chat, or 2–19 others plus a group title. Direct pairs reopen their existing chat. |
+| Chats | Accepted friends appear directly above recent conversations. Tap a friend to open or create a direct chat. Search covers friends and chats; previews, unread counts, and refresh remain. Guest access does not query account data. |
+| Existing groups | Group conversations remain in Recent chats. The former New conversation screen is no longer linked from Chats. |
 | Conversation | Incoming/outgoing text, sender names in groups, dates/times, earlier history, keyboard-aware composer, send/retry states, and member list. Messages require 1–4,000 trimmed characters. |
 
 The navy/yellow theme and Urbanist type remain. Feed/Chats/Profile keep their state while switching tabs using `IndexedStack`. Chats pauses periodic refresh while hidden/backgrounded. Its existing 10-second inbox and 5-second conversation refreshes now read the local database; they send no HTTP requests. Return to Chats or pull to refresh after switching accounts.

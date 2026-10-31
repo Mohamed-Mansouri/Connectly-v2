@@ -14,6 +14,10 @@ class SqliteMessagingRepository implements MessagingRepository {
     CASE WHEN c.kind = 'group' THEN c.title ELSE
       (SELECT u.name FROM conversation_members m JOIN users u ON u.id = m.user_id
        WHERE m.conversation_id = c.id AND m.user_id <> mine.user_id LIMIT 1) END AS title,
+    CASE WHEN c.kind = 'direct' THEN
+      (SELECT m.user_id FROM conversation_members m
+       WHERE m.conversation_id = c.id AND m.user_id <> mine.user_id LIMIT 1)
+      ELSE NULL END AS peer_id,
     (SELECT COUNT(*) FROM conversation_members m WHERE m.conversation_id = c.id) AS member_count,
     last.body AS last_body, last.created_at AS last_message_at, sender.name AS last_sender_name,
     (SELECT COUNT(*) FROM messages msg WHERE msg.conversation_id = c.id
@@ -30,6 +34,7 @@ class SqliteMessagingRepository implements MessagingRepository {
       title: r['title'] as String? ?? 'Conversation',
       memberCount: r['member_count'] as int,
       createdAt: DateTime.parse(r['created_at'] as String),
+      peerId: r['peer_id'] as String?,
       lastBody: r['last_body'] as String?,
       lastSenderName: r['last_sender_name'] as String?,
       lastMessageAt: r['last_message_at'] == null
@@ -48,6 +53,21 @@ class SqliteMessagingRepository implements MessagingRepository {
         '$_conversationSelect ORDER BY COALESCE(last.created_at, c.created_at) DESC, c.id DESC LIMIT 100',
         [userId]);
     return rows.map(_conversation).toList();
+  }
+
+  @override
+  Future<List<ChatPerson>> friends() async {
+    final rows = await database.db.rawQuery('''
+      SELECT u.id, u.name FROM friendships f
+      JOIN users u ON u.id = CASE
+        WHEN f.user_low_id = ? THEN f.user_high_id ELSE f.user_low_id END
+      WHERE f.status = 'accepted'
+        AND (f.user_low_id = ? OR f.user_high_id = ?)
+      ORDER BY u.name COLLATE NOCASE, u.id
+    ''', [userId, userId, userId]);
+    return rows
+        .map((r) => ChatPerson(r['id'] as String, r['name'] as String))
+        .toList();
   }
 
   @override

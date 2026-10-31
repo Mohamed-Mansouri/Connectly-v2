@@ -8,7 +8,6 @@ import '../data/chat_local_store.dart';
 import '../domain/messaging_models.dart';
 import 'chat_widgets.dart';
 import 'conversation_screen.dart';
-import 'new_conversation_screen.dart';
 
 class MessagesScreen extends StatefulWidget {
   const MessagesScreen({this.repository, this.localStore, super.key});
@@ -24,6 +23,7 @@ class _MessagesScreenState extends State<MessagesScreen>
   Future<ChatLocalStore>? _store;
   String? _userId;
   List<Conversation> _conversations = [];
+  List<ChatPerson> _friends = [];
   final _search = TextEditingController();
   bool _loading = false;
   bool _busy = false;
@@ -32,6 +32,7 @@ class _MessagesScreenState extends State<MessagesScreen>
   bool _active = false;
   bool _temporaryStorage = false;
   String? _error;
+  String? _openingFriendId;
   int _revision = 0;
   Timer? _poll;
   @override
@@ -50,10 +51,12 @@ class _MessagesScreenState extends State<MessagesScreen>
       _store = null;
       _userId = auth?.user?.id;
       _conversations = [];
+      _friends = [];
       _error = null;
       _busy = false;
       _active = false;
       _temporaryStorage = false;
+      _openingFriendId = null;
       _search.clear();
       if (_userId != null) {
         _repository = widget.repository ??
@@ -94,9 +97,11 @@ class _MessagesScreenState extends State<MessagesScreen>
     });
     try {
       final conversations = await repository.conversations();
+      final friends = await repository.friends();
       if (mounted && revision == _revision) {
         setState(() {
           _conversations = conversations;
+          _friends = friends;
           _error = null;
         });
       }
@@ -139,14 +144,26 @@ class _MessagesScreenState extends State<MessagesScreen>
     if (mounted) unawaited(_load());
   }
 
-  Future<void> _create() async {
+  Future<void> _openFriend(ChatPerson friend) async {
     final repository = _repository;
-    if (repository == null) return;
-    final conversation = await Navigator.of(context).push<Conversation>(
-        MaterialPageRoute(
-            builder: (_) => NewConversationScreen(repository: repository)));
-    if (mounted && conversation != null) await _open(conversation);
-    if (mounted) unawaited(_load());
+    if (repository == null || _openingFriendId != null) return;
+    setState(() => _openingFriendId = friend.id);
+    try {
+      final conversation =
+          await repository.create(kind: 'direct', memberIds: [friend.id]);
+      if (mounted && identical(repository, _repository)) {
+        await _open(conversation);
+      }
+    } catch (error) {
+      if (mounted && identical(repository, _repository)) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(chatError(error))));
+      }
+    } finally {
+      if (mounted && identical(repository, _repository)) {
+        setState(() => _openingFriendId = null);
+      }
+    }
   }
 
   @override
@@ -157,11 +174,71 @@ class _MessagesScreenState extends State<MessagesScreen>
     super.dispose();
   }
 
+  Widget _friendTile(ChatPerson friend, Conversation? conversation) => Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
+          color: ConnectlyTheme.surface,
+          borderRadius: BorderRadius.circular(18),
+          child: ListTile(
+              key: Key('friend_${friend.id}'),
+              onTap:
+                  _openingFriendId == null ? () => _openFriend(friend) : null,
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              leading: ChatAvatar(friend.name),
+              title: Text(friend.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontFamily: 'Urbanist',
+                      fontWeight: FontWeight.w700,
+                      fontSize: 17)),
+              subtitle: Text(conversation?.lastBody ?? 'Tap to chat',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: chatMuted, height: 1.5)),
+              trailing: _openingFriendId == friend.id
+                  ? const SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : conversation == null
+                      ? const Icon(Icons.chevron_right)
+                      : Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                              Text(
+                                  conversation.lastMessageAt == null
+                                      ? ''
+                                      : messageDate(
+                                          conversation.lastMessageAt!),
+                                  style: const TextStyle(
+                                      color: chatMuted, fontSize: 11)),
+                              if (conversation.unreadCount > 0)
+                                Padding(
+                                    padding: const EdgeInsets.only(top: 6),
+                                    child: Badge(
+                                        label: Text(conversation.unreadCount >
+                                                99
+                                            ? '99+'
+                                            : '${conversation.unreadCount}')))
+                            ]))));
+
   @override
   Widget build(BuildContext context) {
-    final visible = _conversations
+    final query = _search.text.trim().toLowerCase();
+    final friendIds = _friends.map((friend) => friend.id).toSet();
+    final directChatsByFriendId = {
+      for (final conversation in _conversations)
+        if (!conversation.isGroup && conversation.peerId != null)
+          conversation.peerId!: conversation
+    };
+    final visibleConversations = _conversations
         .where((c) =>
-            c.title.toLowerCase().contains(_search.text.trim().toLowerCase()))
+            (c.peerId == null || !friendIds.contains(c.peerId)) &&
+            c.title.toLowerCase().contains(query))
+        .toList();
+    final visibleFriends = _friends
+        .where((friend) => friend.name.toLowerCase().contains(query))
         .toList();
     return Scaffold(
       appBar: AppBar(
@@ -169,17 +246,7 @@ class _MessagesScreenState extends State<MessagesScreen>
               style: TextStyle(
                   fontFamily: 'Urbanist',
                   fontWeight: FontWeight.w700,
-                  fontSize: 27)),
-          actions: [
-            if (_repository != null)
-              Padding(
-                  padding: const EdgeInsets.only(right: 12),
-                  child: IconButton.filledTonal(
-                      key: const Key('new_conversation'),
-                      onPressed: _create,
-                      tooltip: 'New conversation',
-                      icon: const Icon(Icons.edit_square)))
-          ]),
+                  fontSize: 27))),
       body: SafeArea(
           top: false,
           child: Center(
@@ -216,7 +283,7 @@ class _MessagesScreenState extends State<MessagesScreen>
                               controller: _search,
                               onChanged: (_) => setState(() {}),
                               decoration: InputDecoration(
-                                  hintText: 'Search conversations',
+                                  hintText: 'Search friends and chats',
                                   prefixIcon: const Icon(Icons.search),
                                   filled: true,
                                   fillColor: ConnectlyTheme.surface,
@@ -244,22 +311,39 @@ class _MessagesScreenState extends State<MessagesScreen>
                                           onPressed: _load,
                                           child: const Text('Try again'))
                                     ])),
-                          if (!_loading && _error == null && visible.isEmpty)
+                          if (!_loading &&
+                              _error == null &&
+                              visibleFriends.isEmpty &&
+                              visibleConversations.isEmpty)
                             ChatNotice(
-                                title: _conversations.isEmpty
-                                    ? 'Start a conversation'
-                                    : 'No matching conversations',
-                                message: _conversations.isEmpty
-                                    ? 'Say hello to a friend or bring your people together in a group.'
-                                    : 'Try another name.',
-                                action: _conversations.isEmpty
-                                    ? OutlinedButton.icon(
-                                        onPressed: _create,
-                                        icon: const Icon(
-                                            Icons.add_comment_outlined),
-                                        label: const Text('New conversation'))
-                                    : null),
-                          for (final conversation in visible)
+                                title: query.isEmpty
+                                    ? 'No friends or chats yet'
+                                    : 'No matching friends or chats',
+                                message: query.isEmpty
+                                    ? 'Accept a friend request in People, then tap your friend here to chat.'
+                                    : 'Try another name.'),
+                          if (visibleFriends.isNotEmpty) ...[
+                            const Text('Friends',
+                                style: TextStyle(
+                                    fontFamily: 'Urbanist',
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w700)),
+                            const SizedBox(height: 12),
+                            for (final friend in visibleFriends)
+                              _friendTile(
+                                  friend, directChatsByFriendId[friend.id]),
+                          ],
+                          if (visibleConversations.isNotEmpty) ...[
+                            if (visibleFriends.isNotEmpty)
+                              const SizedBox(height: 16),
+                            const Text('Recent chats',
+                                style: TextStyle(
+                                    fontFamily: 'Urbanist',
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w700)),
+                            const SizedBox(height: 12),
+                          ],
+                          for (final conversation in visibleConversations)
                             Padding(
                                 padding: const EdgeInsets.only(bottom: 10),
                                 child: Material(

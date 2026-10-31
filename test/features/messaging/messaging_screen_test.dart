@@ -13,6 +13,32 @@ import '../auth/auth_controller_test.dart'
 import 'messaging_fakes.dart';
 
 void main() {
+  testWidgets('Chats lists friends directly and opens a chat on tap',
+      (tester) async {
+    final repository = FakeMessagingRepository()..inbox = [];
+    final auth = AuthController(
+        repository: FakeAuthRepository(), store: MemorySessionStore());
+    await auth.signIn('member@example.com', 'password');
+    await tester.pumpWidget(AuthScope(
+        controller: auth,
+        child: MaterialApp(
+            theme: ConnectlyTheme.dark,
+            home: MessagesScreen(
+                repository: repository, localStore: MemoryChatLocalStore()))));
+    await tester.pumpAndSettle();
+    expect(find.text('Friends'), findsOneWidget);
+    expect(find.byKey(const Key('friend_other')), findsOneWidget);
+    expect(find.text('New conversation'), findsNothing);
+    await tester.tap(find.byKey(const Key('friend_other')));
+    await tester.pumpAndSettle();
+    expect(repository.createdKind, 'direct');
+    expect(repository.createdMembers, ['other']);
+    expect(find.byType(ConversationScreen), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    auth.dispose();
+  });
+
   testWidgets('conversation sends text and displays the confirmed message',
       (tester) async {
     final repository = FakeMessagingRepository()..history = [testMessage(1)];
@@ -145,7 +171,8 @@ void main() {
     await tester.pumpWidget(app(true));
     await tester.pumpAndSettle();
     expect(repository.inboxCalls, 1);
-    expect(find.text('Another Member'), findsOneWidget);
+    expect(find.byKey(const Key('friend_other')), findsOneWidget);
+    expect(find.byKey(const Key('conversation_chat-1')), findsNothing);
     await tester.pumpWidget(app(false));
     await tester.pump(const Duration(seconds: 12));
     expect(repository.inboxCalls, 1);

@@ -94,6 +94,9 @@ class MessagingApi implements MessagingRepository {
   }
 
   @override
+  Future<List<ChatPerson>> friends() => contacts('');
+
+  @override
   Future<Conversation> create(
       {required String kind,
       required List<String> memberIds,

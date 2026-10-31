@@ -214,6 +214,8 @@ void main() {
     final chatsA = SqliteMessagingRepository(database, a.user.id);
     final chatsC = SqliteMessagingRepository(database, c.user.id);
     expect((await chatsA.contacts('')).length, 2);
+    expect((await chatsA.friends()).map((friend) => friend.id), [c.user.id]);
+    expect((await chatsC.friends()).map((friend) => friend.id), [a.user.id]);
     final group = await chatsA.create(
         kind: 'group',
         title: ' Study group ',

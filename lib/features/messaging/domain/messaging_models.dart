@@ -13,6 +13,7 @@ class Conversation {
       required this.title,
       required this.memberCount,
       required this.createdAt,
+      this.peerId,
       this.lastBody,
       this.lastSenderName,
       this.lastMessageAt,
@@ -22,6 +23,7 @@ class Conversation {
   final String title;
   final int memberCount;
   final DateTime createdAt;
+  final String? peerId;
   final String? lastBody;
   final String? lastSenderName;
   final DateTime? lastMessageAt;
@@ -33,6 +35,7 @@ class Conversation {
       title: json['title'] as String,
       memberCount: json['memberCount'] as int,
       createdAt: DateTime.parse(json['createdAt'] as String),
+      peerId: json['peerId'] as String?,
       lastBody: json['lastBody'] as String?,
       lastSenderName: json['lastSenderName'] as String?,
       lastMessageAt: json['lastMessageAt'] == null
@@ -76,6 +79,7 @@ class MessagingException implements Exception {
 
 abstract class MessagingRepository {
   Future<List<Conversation>> conversations();
+  Future<List<ChatPerson>> friends();
   Future<List<ChatPerson>> contacts(String search);
   Future<Conversation> create(
       {required String kind, required List<String> memberIds, String? title});

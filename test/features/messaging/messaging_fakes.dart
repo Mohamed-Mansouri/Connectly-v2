@@ -5,7 +5,8 @@ final testConversation = Conversation(
     kind: 'direct',
     title: 'Another Member',
     memberCount: 2,
-    createdAt: DateTime.utc(2026, 10, 24));
+    createdAt: DateTime.utc(2026, 10, 24),
+    peerId: 'other');
 ChatMessage testMessage(int sequence,
         {String? clientId, String senderId = 'other', String? body}) =>
     ChatMessage(
@@ -23,6 +24,7 @@ class FakeMessagingRepository implements MessagingRepository {
     const ChatPerson('other', 'Another Member'),
     const ChatPerson('third', 'Third Member')
   ];
+  List<ChatPerson> friendsList = [const ChatPerson('other', 'Another Member')];
   Future<MessagePage> Function(int?, int?)? onMessages;
   Future<ChatMessage> Function(String, String)? onSend;
   int inboxCalls = 0;
@@ -40,6 +42,8 @@ class FakeMessagingRepository implements MessagingRepository {
 
   @override
   Future<List<ChatPerson>> contacts(String search) async => people;
+  @override
+  Future<List<ChatPerson>> friends() async => friendsList;
   @override
   Future<Conversation> create(
       {required String kind,
