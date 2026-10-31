@@ -4,6 +4,7 @@ import '../features/auth/application/auth_controller.dart';
 import '../features/auth/data/auth_session_store.dart';
 import '../features/auth/data/login_preferences.dart';
 import '../features/auth/data/sqlite_auth_repository.dart';
+import '../features/discovery/data/demo_people_seeder.dart';
 import '../shared/data/local_database.dart';
 import 'connectly_app.dart';
 import 'connectly_theme.dart';
@@ -24,6 +25,7 @@ class _LocalAppLoaderState extends State<LocalAppLoader> {
 
   Future<_LocalAppData> _open() async {
     final database = await LocalDatabase.open();
+    await seedDemoPeople(database);
     LoginPreferences? preferences;
     try {
       preferences = await HiveLoginPreferences.open();

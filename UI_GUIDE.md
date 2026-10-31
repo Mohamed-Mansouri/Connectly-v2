@@ -2,7 +2,7 @@
 
 ## Current architecture — 2026-10-26
 
-The app uses SQLite on the phone through `sqflite`. Hive holds preferences and message drafts/pending sends. Authentication, feed, and messaging work without a backend. New installations start empty. Accounts and records on another phone or in the old Turso database do not appear here.
+The app uses SQLite on the phone through `sqflite`. Hive holds preferences and message drafts/pending sends. Authentication, feed, and messaging work without a backend. New installations get six fictional Demo accounts with shared pins; other accounts and content start empty. Accounts and records on another phone or in the old Turso database do not appear here.
 
 `Screen -> controller / repository interface -> SQLite repository -> connectly_local.db`
 
@@ -17,9 +17,9 @@ The app uses SQLite on the phone through `sqflite`. Hive holds preferences and m
 | Profile | Displays the current local user's name/email; Sign out returns to Login. Guests get a sign-in action. Editing remains planned. |
 | Feed | Connections/Friends/Following filters, chronological posts, composer, reaction totals, pull to refresh, and pagination. Empty-feed Find people switches to the People tab. Own posts appear in every filter. |
 | Create post | Trimmed text, 1–3,000 characters; inserts into SQLite. Failure preserves the open sheet's text. Closing discards this in-memory post draft. Own-post deletion requires confirmation and cascades reactions. |
-| People | Bottom tab replacing Nearby. Name search, Discover/Friends/Friend requests/Following filters, list/map modes, and connection actions in one place. Follow/unfollow is one-way; friendship requires recipient acceptance. Tap map markers to select people and reveal the same actions. Switch accounts to demonstrate both sides. |
+| People | Bottom tab replacing Nearby. Map opens first; name search, Discover/Friends/Friend requests/Following filters, list mode, and connection actions remain available. Follow/unfollow is one-way; friendship requires recipient acceptance. Tap existing markers to select people and reveal the same actions. Empty-map taps do not place pins. Switch accounts to demonstrate both sides. |
 | Your map pin | Tap the offline Ariana map or request a foreground GPS fix; Save explicitly. Share/hide/remove the pin. Denied permission, timeout, disabled location, and outside-coverage fixes leave manual placement available. No continuous tracking. |
-| Proximity | Optional 1/5/10/25 km filters measure straight-line distance from the account's saved pin and sort nearest first. Unlocated/hidden accounts remain searchable in Any distance list mode but are excluded from radius matches and the map. |
+| Proximity | The default 1 km filter, plus optional 5/10/25 km and Any distance, measures straight-line distance from the account's saved pin and sorts nearest first. Without your own pin, the map shows all shared pins without claiming they are nearby. Unlocated/hidden accounts remain searchable in Any distance list mode but are excluded from radius matches and the map. |
 | Post reactions | Like, Love, Celebrate, Insightful; one reaction per account/post. Replace/remove changes local SQLite rows. Comments are deferred. |
 | Chats | Member conversations, title search, last-message previews, unread counts, refresh, and New conversation. Guest access does not query account data. |
 | New conversation | Select friends/followed accounts on this phone: one for direct chat, or 2–19 others plus a group title. Direct pairs reopen their existing chat. |

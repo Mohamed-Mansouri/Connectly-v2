@@ -24,8 +24,9 @@ class _PeopleScreenState extends State<PeopleScreen> {
   final Set<String> _busy = {};
   PeopleSnapshot? _snapshot;
   String _filter = 'all';
-  bool _map = false;
+  bool _map = true;
   double? _radius;
+  bool _radiusInitialized = false;
   String? _selectedId;
   String? _error;
   bool _loading = false;
@@ -62,7 +63,9 @@ class _PeopleScreenState extends State<PeopleScreen> {
       _snapshot = null;
       _search.clear();
       _filter = 'all';
+      _map = true;
       _radius = null;
+      _radiusInitialized = false;
       _selectedId = null;
       _busy.clear();
       _saving = false;
@@ -83,9 +86,16 @@ class _PeopleScreenState extends State<PeopleScreen> {
       _error = null;
     });
     try {
-      final result = await repository.load(
+      var result = await repository.load(
           search: _search.text, filter: _filter, radiusKm: _radius);
       if (!mounted || revision != _revision) return;
+      if (!_radiusInitialized && result.ownLocation != null) {
+        _radius = 1;
+        _radiusInitialized = true;
+        result = await repository.load(
+            search: _search.text, filter: _filter, radiusKm: _radius);
+        if (!mounted || revision != _revision) return;
+      }
       setState(() {
         _snapshot = result;
         if (!result.people.any((p) => p.person.id == _selectedId)) {
@@ -147,7 +157,10 @@ class _PeopleScreenState extends State<PeopleScreen> {
     try {
       if (edit.location == null) {
         await repository.removeLocation();
-        if (mounted && identical(repository, _repository)) _radius = null;
+        if (mounted && identical(repository, _repository)) {
+          _radius = null;
+          _radiusInitialized = false;
+        }
       } else {
         await repository.saveLocation(edit.location!);
       }
@@ -219,7 +232,7 @@ class _PeopleScreenState extends State<PeopleScreen> {
                                     fontSize: 29, fontWeight: FontWeight.w700)),
                             const SizedBox(height: 6),
                             const Text(
-                                'Search by name or explore saved pins around Ariana.',
+                                'Explore people sharing a location around Ariana.',
                                 style: TextStyle(color: feedMuted)),
                             const SizedBox(height: 6),
                             const Text(
@@ -295,8 +308,8 @@ class _PeopleScreenState extends State<PeopleScreen> {
                                       label: Text(_saving
                                           ? 'Saving…'
                                           : own == null
-                                              ? 'Place my pin'
-                                              : 'Edit my pin')),
+                                              ? 'Set my location'
+                                              : 'Edit my location')),
                                   if (own != null)
                                     Text(
                                         own.visible
@@ -327,7 +340,10 @@ class _PeopleScreenState extends State<PeopleScreen> {
                                       selected: _radius == radius,
                                       onSelected: (_) {
                                         _debounce?.cancel();
-                                        setState(() => _radius = radius);
+                                        setState(() {
+                                          _radius = radius;
+                                          _radiusInitialized = true;
+                                        });
                                         _load();
                                       }),
                               ])
@@ -335,7 +351,7 @@ class _PeopleScreenState extends State<PeopleScreen> {
                               const Padding(
                                   padding: EdgeInsets.symmetric(vertical: 8),
                                   child: Text(
-                                      'Place your pin to filter by distance. Tap a person’s marker to connect.',
+                                      'Set your location to see who is nearby. Until then, the map shows all shared pins.',
                                       style: TextStyle(color: feedMuted))),
                             const SizedBox(height: 12),
                             if (_loading) const LinearProgressIndicator(),
@@ -369,7 +385,9 @@ class _PeopleScreenState extends State<PeopleScreen> {
                                       child: Text(
                                           pins.isEmpty
                                               ? 'No matching shared pins in Ariana. People without a shared pin are available in List.'
-                                              : '${pins.length} ${pins.length == 1 ? 'person' : 'people'} on the map. Tap a marker to follow or add a friend.',
+                                              : own == null
+                                                  ? '${pins.length} shared ${pins.length == 1 ? 'pin' : 'pins'} on the map. Set your location to see who is nearby.'
+                                                  : '${pins.length} ${pins.length == 1 ? 'person' : 'people'} ${_radius == null ? 'with a shared pin' : 'within ${_radius!.toInt()} km'}. Tap a marker to follow or add a friend.',
                                           style: const TextStyle(
                                               color: feedMuted))),
                               ] else if (people.isEmpty)

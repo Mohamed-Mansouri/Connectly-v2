@@ -64,10 +64,10 @@ void main() {
       await tester.pumpWidget(MaterialApp(
           theme: ConnectlyTheme.dark,
           home: PeopleScreen(repository: repository)));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Map'));
-      await tester.pump();
       await waitForMap(tester);
+      expect(repository.radii.last, 1);
+      expect(
+          tester.widget<ArianaMap>(find.byType(ArianaMap)).onPlacePin, isNull);
       await tester.ensureVisible(find.byType(ArianaMap));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('pin_bob')));
@@ -96,12 +96,65 @@ void main() {
         theme: ConnectlyTheme.dark,
         home: PeopleScreen(repository: repository)));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('List'));
+    await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'Bob');
     await tester.pump(const Duration(milliseconds: 350));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('person_bob')), findsOneWidget);
     expect(find.text('Alice'), findsNothing);
     expect(repository.searches.last, 'Bob');
+  });
+
+  testWidgets('map starts with only shared people inside the default 1 km',
+      (tester) async {
+    final connections = FakeFeedRepository()
+      ..members = [
+        const FeedPerson(
+            id: 'near', name: 'Near', isFollowing: false, friendship: 'none'),
+        const FeedPerson(
+            id: 'far', name: 'Far', isFollowing: false, friendship: 'none'),
+        const FeedPerson(
+            id: 'hidden',
+            name: 'Hidden',
+            isFollowing: false,
+            friendship: 'none')
+      ];
+    final repository = FakePeopleRepository(connections)
+      ..own = const PeopleLocation(36.8625, 10.19556)
+      ..locations = {
+        'near': const PeopleLocation(36.864, 10.196),
+        'far': const PeopleLocation(36.88, 10.196),
+        'hidden': const PeopleLocation(36.863, 10.196, visible: false),
+      };
+    await tester.pumpWidget(MaterialApp(
+        theme: ConnectlyTheme.dark,
+        home: PeopleScreen(repository: repository)));
+    await waitForMap(tester);
+    expect(repository.radii.last, 1);
+    expect(find.byKey(const ValueKey('pin_near')), findsOneWidget);
+    expect(find.byKey(const ValueKey('pin_far')), findsNothing);
+    expect(find.byKey(const ValueKey('pin_hidden')), findsNothing);
+    expect(tester.widget<ArianaMap>(find.byType(ArianaMap)).onPlacePin, isNull);
+  });
+
+  testWidgets('without own location, shared pins are not called nearby',
+      (tester) async {
+    final connections = FakeFeedRepository()
+      ..members = [
+        const FeedPerson(
+            id: 'bob', name: 'Bob', isFollowing: false, friendship: 'none')
+      ];
+    final repository = FakePeopleRepository(connections)
+      ..locations = {'bob': const PeopleLocation(36.864, 10.196)};
+    await tester.pumpWidget(MaterialApp(
+        theme: ConnectlyTheme.dark,
+        home: PeopleScreen(repository: repository)));
+    await waitForMap(tester);
+    expect(repository.radii.last, isNull);
+    expect(find.byKey(const ValueKey('pin_bob')), findsOneWidget);
+    expect(find.textContaining('Set your location to see who is nearby'),
+        findsWidgets);
   });
 
   testWidgets(

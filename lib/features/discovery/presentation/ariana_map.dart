@@ -131,9 +131,10 @@ class _ArianaMapState extends State<ArianaMap> {
                           flags: InteractiveFlag.all & ~InteractiveFlag.rotate),
                       onMapReady: () => _ready = true,
                       onTap: (_, point) {
+                        if (widget.onPlacePin == null) return;
                         final pin =
                             PeopleLocation(point.latitude, point.longitude);
-                        if (inAriana(pin)) widget.onPlacePin?.call(pin);
+                        if (inAriana(pin)) widget.onPlacePin!(pin);
                       },
                     ),
                     children: [

@@ -64,6 +64,8 @@ void main() {
         await pumpUntil(tester, find.text('SQLite post without HTTP'));
         expect(find.text('SQLite post without HTTP'), findsOneWidget);
         await tester.tap(find.text('People'));
+        await pumpUntil(tester, find.text('List'));
+        await tester.tap(find.text('List'));
         await pumpUntil(tester, find.text('Other Member'));
         expect(find.text('Other Member'), findsOneWidget);
         expect(find.text('Nearby'), findsNothing);

@@ -107,6 +107,8 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         theme: ConnectlyTheme.dark,
         home: PeopleScreen(repository: FakePeopleRepository(repository))));
+    await tester.pump();
+    await tester.tap(find.text('List'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Accept request'));
     await tester.pumpAndSettle();
