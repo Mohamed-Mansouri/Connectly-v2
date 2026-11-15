@@ -60,7 +60,7 @@ To use fingerprint login, enroll a fingerprint in the phone's Android settings, 
 
 ### Demo account sign-in
 
-All six fictional profiles use the password **`12345678`**. Their local email addresses are `demo.amal@connectly.invalid`, `demo.sami@connectly.invalid`, `demo.ines@connectly.invalid` (Ariana center), and `demo.nour@connectly.invalid`, `demo.youssef@connectly.invalid`, `demo.meriem@connectly.invalid` (ESPRIT Charguia). They start without friendships; requests can be accepted after switching accounts. Existing demo passwords are updated on the next app launch; locations and relationships are not reset at startup.
+All six fictional profiles use the password **`12345678`**. Their local email addresses are `amal@g.m`, `sami@g.m`, `ines@g.m` (Ariana center), and `nour@g.m`, `youssef@g.m`, `meriem@g.m` (ESPRIT Charguia). They start without friendships; requests can be accepted after switching accounts. Existing demo passwords are updated on the next app launch; locations and relationships are not reset at startup.
 
 The map covers **Ariana city** (36.84–36.90°N, 10.15–10.21°E), with bundled OpenStreetMap geometry and visible attribution. It does not download tiles. Saved locations are optional per-account SQLite rows, with a hide/remove option and no background tracking. Pins represent accounts on this phone, not live nearby devices. Without your own saved location, the map shows all shared pins and asks you to set yours before calling anyone nearby. Existing pins outside Ariana stay saved and can be repositioned using Edit my pin. See [map credits/source](assets/maps/README.md).
 

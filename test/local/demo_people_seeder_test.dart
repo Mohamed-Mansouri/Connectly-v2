@@ -63,7 +63,7 @@ void main() {
       expect((await people.load()).ownLocation!.latitude, 36.8533);
 
       final demoSession =
-          await auth.signIn('demo.nour@connectly.invalid', demoPeoplePassword);
+          await auth.signIn('nour@g.m', demoPeoplePassword);
       expect(demoSession.user.id, 'demo-nour');
       expect((await nour.load(filter: 'requests')).people.single.person.id,
           presenter.user.id);
@@ -87,7 +87,7 @@ void main() {
       await database.db.insert('users', {
         'id': 'demo-amal',
         'name': 'Demo Amal · Ariana',
-        'email': 'demo.amal@connectly.invalid',
+        'email': 'amal@g.m',
         'password_hash': await passwords.hash('ConnectlyDemo!2026'),
         'created_at': localTimestamp(),
       });
@@ -111,10 +111,10 @@ void main() {
       expect((await people.load(filter: 'requests')).people.single.person.id,
           'demo-amal');
       await expectLater(
-          auth.signIn('demo.amal@connectly.invalid', 'ConnectlyDemo!2026'),
+          auth.signIn('amal@g.m', 'ConnectlyDemo!2026'),
           throwsA(isA<AuthException>()));
       expect(
-          (await auth.signIn('demo.amal@connectly.invalid', demoPeoplePassword))
+          (await auth.signIn('amal@g.m', demoPeoplePassword))
               .user
               .id,
           'demo-amal');
