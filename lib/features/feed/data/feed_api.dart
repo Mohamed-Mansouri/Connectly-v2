@@ -132,5 +132,17 @@ class FeedApi implements FeedRepository {
         body: {'action': action});
   }
 
+  static const _unsupported =
+      FeedException('Comments and reaction lists are only available offline.');
+  @override
+  Future<List<FeedReactor>> reactors(String postId) async => throw _unsupported;
+  @override
+  Future<List<FeedComment>> comments(String postId) async => throw _unsupported;
+  @override
+  Future<FeedComment> addComment(String postId, String body) async =>
+      throw _unsupported;
+  @override
+  Future<void> deleteComment(String commentId) async => throw _unsupported;
+
   void close() => _client.close();
 }

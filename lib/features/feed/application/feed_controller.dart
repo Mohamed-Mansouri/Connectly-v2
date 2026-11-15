@@ -103,6 +103,13 @@ class FeedController extends ChangeNotifier {
     }
   }
 
+  void commentsChanged(String postId, int count) {
+    _posts = _posts
+        .map((p) => p.id == postId ? p.copyWith(commentCount: count) : p)
+        .toList();
+    _notify();
+  }
+
   Future<String?> delete(FeedPost post) async {
     if (!busyPosts.add(post.id)) return null;
     _notify();

@@ -68,3 +68,14 @@ const messageAudioSchema = '''CREATE TABLE message_audio (
   message_sequence INTEGER PRIMARY KEY REFERENCES messages(sequence) ON DELETE CASCADE,
   data BLOB NOT NULL CHECK(length(data) BETWEEN 1 AND 2000000),
   duration_ms INTEGER NOT NULL CHECK(duration_ms BETWEEN 1 AND 120000))''';
+
+// Version 5 adds post comments. They disappear with their post or author.
+const postCommentSchema = [
+  '''CREATE TABLE post_comments (
+  id TEXT PRIMARY KEY,
+  post_id TEXT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  author_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body TEXT NOT NULL CHECK(length(body) BETWEEN 1 AND 1000),
+  created_at TEXT NOT NULL)''',
+  'CREATE INDEX post_comments_post_time ON post_comments(post_id, created_at, id)',
+];

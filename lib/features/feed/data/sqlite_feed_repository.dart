@@ -31,7 +31,8 @@ class SqliteFeedRepository implements FeedRepository {
     (SELECT COUNT(*) FROM post_reactions r WHERE r.post_id = p.id AND r.kind = 'like') AS likes,
     (SELECT COUNT(*) FROM post_reactions r WHERE r.post_id = p.id AND r.kind = 'love') AS loves,
     (SELECT COUNT(*) FROM post_reactions r WHERE r.post_id = p.id AND r.kind = 'celebrate') AS celebrates,
-    (SELECT COUNT(*) FROM post_reactions r WHERE r.post_id = p.id AND r.kind = 'insightful') AS insights
+    (SELECT COUNT(*) FROM post_reactions r WHERE r.post_id = p.id AND r.kind = 'insightful') AS insights,
+    (SELECT COUNT(*) FROM post_comments c WHERE c.post_id = p.id) AS comments
     FROM posts p JOIN users u ON u.id = p.author_id''';
   FeedPost _post(Map<String, Object?> row) => FeedPost(
       id: row['id'] as String,
@@ -45,7 +46,8 @@ class SqliteFeedRepository implements FeedRepository {
         'celebrate': row['celebrates'] as int,
         'insightful': row['insights'] as int
       },
-      myReaction: row['my_reaction'] as String?);
+      myReaction: row['my_reaction'] as String?,
+      commentCount: row['comments'] as int);
 
   @override
   Future<FeedPage> load({required String scope, String? cursor}) async {
@@ -104,7 +106,7 @@ class SqliteFeedRepository implements FeedRepository {
 
   @override
   Future<void> delete(String postId) async {
-    // Foreign keys cascade the reactions; another account cannot delete this row.
+    // Foreign keys cascade reactions and comments; another account cannot delete this row.
     await database.db.delete('posts',
         where: 'id = ? AND author_id = ?', whereArgs: [postId, userId]);
   }
@@ -128,6 +130,73 @@ class SqliteFeedRepository implements FeedRepository {
       }
       return _find(txn, postId);
     });
+  }
+
+  @override
+  Future<List<FeedReactor>> reactors(String postId) async {
+    await _find(database.db, postId);
+    final rows = await database.db.rawQuery(
+        '''SELECT r.user_id, u.name, r.kind FROM post_reactions r
+      JOIN users u ON u.id = r.user_id WHERE r.post_id = ?
+      ORDER BY CASE WHEN r.user_id = ? THEN 0 ELSE 1 END, u.name COLLATE NOCASE, u.id''',
+        [postId, userId]);
+    return rows
+        .map((r) => FeedReactor(
+            userId: r['user_id'] as String,
+            name: r['name'] as String,
+            kind: r['kind'] as String))
+        .toList();
+  }
+
+  static const _commentSelect =
+      '''SELECT c.id, c.post_id, c.author_id, u.name AS author_name, c.body, c.created_at
+    FROM post_comments c JOIN users u ON u.id = c.author_id''';
+  FeedComment _comment(Map<String, Object?> row) => FeedComment(
+      id: row['id'] as String,
+      postId: row['post_id'] as String,
+      authorId: row['author_id'] as String,
+      authorName: row['author_name'] as String,
+      body: row['body'] as String,
+      createdAt: DateTime.parse(row['created_at'] as String));
+
+  @override
+  Future<List<FeedComment>> comments(String postId) async {
+    await _find(database.db, postId);
+    final rows = await database.db.rawQuery(
+        '$_commentSelect WHERE c.post_id = ? ORDER BY c.created_at, c.id LIMIT 500',
+        [postId]);
+    return rows.map(_comment).toList();
+  }
+
+  @override
+  Future<FeedComment> addComment(String postId, String body) async {
+    final text = body.trim();
+    if (text.isEmpty || text.length > 1000) {
+      throw const FeedException(
+          'Write a comment between 1 and 1,000 characters.');
+    }
+    return database.db.transaction((txn) async {
+      await _find(txn, postId);
+      final id = localId();
+      await txn.insert('post_comments', {
+        'id': id,
+        'post_id': postId,
+        'author_id': userId,
+        'body': text,
+        'created_at': localTimestamp()
+      });
+      final rows = await txn.rawQuery('$_commentSelect WHERE c.id = ?', [id]);
+      return _comment(rows.single);
+    });
+  }
+
+  @override
+  Future<void> deleteComment(String commentId) async {
+    // Comment authors and the post's author may remove a comment.
+    await database.db.rawDelete(
+        '''DELETE FROM post_comments WHERE id = ? AND (author_id = ?
+      OR post_id IN (SELECT id FROM posts WHERE author_id = ?))''',
+        [commentId, userId, userId]);
   }
 
   @override

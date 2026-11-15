@@ -52,6 +52,31 @@ class FakeFeedRepository implements FeedRepository {
         Future.value(testPost(postId, reaction: kind));
   }
 
+  List<FeedReactor> reactorList = [];
+  final commentList = <FeedComment>[];
+  @override
+  Future<List<FeedReactor>> reactors(String postId) async => reactorList;
+  @override
+  Future<List<FeedComment>> comments(String postId) async =>
+      commentList.where((c) => c.postId == postId).toList();
+  @override
+  Future<FeedComment> addComment(String postId, String body) async {
+    final comment = FeedComment(
+        id: 'comment-${commentList.length + 1}',
+        postId: postId,
+        authorId: 'user-1',
+        authorName: 'Test Member',
+        body: body.trim(),
+        createdAt: DateTime.now());
+    commentList.add(comment);
+    return comment;
+  }
+
+  @override
+  Future<void> deleteComment(String commentId) async {
+    commentList.removeWhere((c) => c.id == commentId);
+  }
+
   @override
   Future<List<FeedPerson>> people(
           {String search = '', bool requests = false}) async =>

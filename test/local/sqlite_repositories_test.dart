@@ -36,7 +36,7 @@ void main() {
             .values
             .single,
         1);
-    expect(await database.db.getVersion(), 4);
+    expect(await database.db.getVersion(), 5);
     await expectLater(
         database.db.insert('posts', {
           'id': 'invalid',
@@ -85,6 +85,48 @@ void main() {
     final passwords = LocalPasswords(iterations: 1000);
     expect(await passwords.hash('same password'),
         isNot(await passwords.hash('same password')));
+  });
+
+  test('comments and reactor names respect visibility and ownership', () async {
+    final a = await account('Alpha');
+    final b = await account('Beta');
+    final c = await account('Gamma');
+    final feedA = SqliteFeedRepository(database, a.user.id);
+    final feedB = SqliteFeedRepository(database, b.user.id);
+    final feedC = SqliteFeedRepository(database, c.user.id);
+    final post = await feedA.create('Comment on me');
+    await expectLater(
+        feedB.addComment(post.id, 'hi'), throwsA(isA<FeedException>()));
+    await expectLater(feedB.reactors(post.id), throwsA(isA<FeedException>()));
+    await feedB.follow(a.user.id, true);
+    await feedC.follow(a.user.id, true);
+    await expectLater(
+        feedB.addComment(post.id, '   '), throwsA(isA<FeedException>()));
+    final first = await feedB.addComment(post.id, '  Nice post  ');
+    expect(first.body, 'Nice post');
+    expect(first.authorName, 'Beta');
+    final second = await feedC.addComment(post.id, 'Agreed');
+    expect((await feedA.comments(post.id)).map((c) => c.id),
+        [first.id, second.id]);
+    expect(
+        (await feedA.load(scope: 'connections')).posts.single.commentCount, 2);
+    // Another commenter cannot remove Beta's comment; the post author can.
+    await feedC.deleteComment(first.id);
+    expect((await feedA.comments(post.id)).length, 2);
+    await feedA.deleteComment(first.id);
+    await feedC.deleteComment(second.id);
+    expect(await feedA.comments(post.id), isEmpty);
+
+    await feedB.react(post.id, 'love');
+    await feedC.react(post.id, 'like');
+    final reactors = await feedC.reactors(post.id);
+    expect(reactors.first.name, 'Gamma'); // the viewer is listed first
+    expect({for (final r in reactors) r.name: r.kind},
+        {'Gamma': 'like', 'Beta': 'love'});
+
+    await feedB.addComment(post.id, 'Gone with the post');
+    await feedA.delete(post.id);
+    expect(await database.db.query('post_comments'), isEmpty);
   });
 
   test('friends/following visibility and reactions work between local accounts',

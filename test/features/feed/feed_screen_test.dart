@@ -28,15 +28,56 @@ Future<AuthController> pumpFeed(
 }
 
 void main() {
-  testWidgets('signed-in feed renders posts, filters, and no comment action',
+  testWidgets('signed-in feed renders posts, filters, and a comment action',
       (tester) async {
     await pumpFeed(tester, FakeFeedRepository());
     expect(find.text('A little update post-1'), findsOneWidget);
     expect(find.text('Connections'), findsOneWidget);
     expect(find.text('Friends'), findsOneWidget);
     expect(find.text('Following'), findsOneWidget);
-    expect(find.text('Comment'), findsNothing);
+    expect(find.text('Comment'), findsOneWidget);
     expect(find.byKey(const Key('feed_people')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('comments can be written and update the post count',
+      (tester) async {
+    final repository = FakeFeedRepository();
+    await pumpFeed(tester, repository);
+    await tester.tap(find.byKey(const Key('comment_post-1')));
+    await tester.pumpAndSettle();
+    expect(
+        find.text('No comments yet. Start the conversation.'), findsOneWidget);
+    await tester.enterText(
+        find.byKey(const Key('comment_input')), 'Great update!');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('comment_send')));
+    await tester.pumpAndSettle();
+    expect(find.text('Great update!'), findsOneWidget);
+    expect(find.text('Comments · 1'), findsOneWidget);
+    expect(repository.commentList.single.postId, 'post-1');
+    Navigator.of(tester.element(find.text('Great update!'))).pop();
+    await tester.pumpAndSettle();
+    expect(find.text('1 comment'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('tapping reaction counts lists who reacted', (tester) async {
+    final repository = FakeFeedRepository()
+      ..posts = [testPost('post-1', reaction: 'like')]
+      ..reactorList = const [
+        FeedReactor(userId: 'user-1', name: 'Test Member', kind: 'like'),
+        FeedReactor(userId: 'user-2', name: 'Sara Ben Ali', kind: 'love'),
+      ];
+    await pumpFeed(tester, repository);
+    await tester.tap(find.byKey(const Key('reactors_post-1')));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(ListTile, 'Test Member · You'), findsOneWidget);
+    expect(find.text('Sara Ben Ali'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('reactors_filter_love')));
+    await tester.pumpAndSettle();
+    expect(find.text('Sara Ben Ali'), findsOneWidget);
+    expect(find.widgetWithText(ListTile, 'Test Member · You'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

@@ -9,6 +9,7 @@ import '../domain/feed_models.dart';
 import 'create_post_sheet.dart';
 import 'feed_widgets.dart';
 import 'post_card.dart';
+import 'post_sheets.dart';
 
 class FeedScreen extends StatefulWidget {
   const FeedScreen({this.repository, super.key});
@@ -93,6 +94,39 @@ class _FeedScreenState extends State<FeedScreen> {
                       child: const Text('Delete'))
                 ]));
     if (confirmed == true && mounted) _message(await controller.delete(post));
+  }
+
+  Future<void> _comments(FeedPost post) async {
+    final controller = _controller;
+    final userId = _userId;
+    if (controller == null || userId == null) return;
+    await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        backgroundColor: ConnectlyTheme.navy,
+        builder: (_) => CommentsSheet(
+            repository: controller.repository,
+            post: post,
+            userId: userId,
+            onCountChanged: (count) {
+              if (identical(controller, _controller)) {
+                controller.commentsChanged(post.id, count);
+              }
+            }));
+  }
+
+  Future<void> _reactors(FeedPost post) async {
+    final controller = _controller;
+    final userId = _userId;
+    if (controller == null || userId == null) return;
+    await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        backgroundColor: ConnectlyTheme.navy,
+        builder: (_) => ReactorsSheet(
+            repository: controller.repository, post: post, userId: userId));
   }
 
   @override
@@ -228,6 +262,8 @@ class _FeedScreenState extends State<FeedScreen> {
                               isOwn: post.authorId == _userId,
                               busy: controller.busyPosts.contains(post.id),
                               onDelete: () => _delete(post),
+                              onComment: () => _comments(post),
+                              onShowReactors: () => _reactors(post),
                               onReact: (kind) async =>
                                   _message(await controller.react(post, kind))),
                         if (!controller.loading &&
