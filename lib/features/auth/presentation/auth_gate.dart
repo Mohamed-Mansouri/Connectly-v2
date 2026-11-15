@@ -29,6 +29,7 @@ class AuthGate extends StatelessWidget {
             onBiometricSignIn: controller.biometricLoginAvailable
                 ? controller.signInWithBiometrics
                 : null,
+            biometricAvailableFor: controller.canUseBiometricsFor,
             onCreateAccount: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (_) => SignupScreen(onSignUp: controller.signUp),

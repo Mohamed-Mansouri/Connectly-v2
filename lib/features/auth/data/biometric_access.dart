@@ -3,10 +3,30 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
 import '../domain/auth_models.dart';
 
+/// One account's fingerprint sign-in token on this phone. Each local account
+/// may have its own; [email] lets the login screen match the typed address.
 class BiometricCredential {
-  const BiometricCredential({required this.userId, required this.token});
+  const BiometricCredential(
+      {required this.userId, required this.token, this.email = ''});
   final String userId;
   final String token;
+  final String email;
+
+  BiometricCredential withEmail(String email) =>
+      BiometricCredential(userId: userId, token: token, email: email);
+
+  Map<String, String> toJson() =>
+      {'userId': userId, 'token': token, 'email': email};
+
+  static BiometricCredential? fromJson(Object? value) {
+    if (value is! Map) return null;
+    final userId = value['userId'];
+    final token = value['token'];
+    final email = value['email'] ?? '';
+    if (userId is! String || token is! String || email is! String) return null;
+    if (userId.isEmpty || token.isEmpty) return null;
+    return BiometricCredential(userId: userId, token: token, email: email);
+  }
 }
 
 abstract class BiometricSessionRepository {
@@ -38,9 +58,8 @@ class DeviceBiometricAccess implements BiometricAccess {
 }
 
 abstract class BiometricSettingsStore {
-  Future<BiometricCredential?> readCredential();
-  Future<void> saveCredential(BiometricCredential credential);
-  Future<void> clear();
+  Future<List<BiometricCredential>> readCredentials();
+  Future<void> saveCredentials(List<BiometricCredential> credentials);
 }
 
 class SecureBiometricSettingsStore implements BiometricSettingsStore {
@@ -49,34 +68,47 @@ class SecureBiometricSettingsStore implements BiometricSettingsStore {
   }) : _storage = storage;
 
   final FlutterSecureStorage _storage;
-  static const _key = 'connectly_biometric_credential';
+  static const _key = 'connectly_biometric_credentials';
+  // Earlier builds kept a single credential per phone under these keys.
+  static const _singleKey = 'connectly_biometric_credential';
   static const _legacyKey = 'connectly_biometric_user_id';
 
   @override
-  Future<BiometricCredential?> readCredential() async {
+  Future<List<BiometricCredential>> readCredentials() async {
     final encoded = await _storage.read(key: _key);
-    if (encoded == null) {
-      await _storage.delete(key: _legacyKey);
-      return null;
-    }
+    if (encoded == null) return _migrateSingle();
     try {
-      final data = jsonDecode(encoded) as Map<String, dynamic>;
-      final userId = data['userId'] as String;
-      final token = data['token'] as String;
-      if (userId.isEmpty || token.isEmpty) throw const FormatException();
-      return BiometricCredential(userId: userId, token: token);
+      return [
+        for (final item in jsonDecode(encoded) as List)
+          if (BiometricCredential.fromJson(item) case final credential?)
+            credential
+      ];
     } catch (_) {
-      await clear();
-      return null;
+      await _storage.delete(key: _key);
+      return [];
+    }
+  }
+
+  Future<List<BiometricCredential>> _migrateSingle() async {
+    await _storage.delete(key: _legacyKey);
+    final single = await _storage.read(key: _singleKey);
+    if (single == null) return [];
+    await _storage.delete(key: _singleKey);
+    try {
+      final credential = BiometricCredential.fromJson(jsonDecode(single));
+      if (credential == null) return [];
+      await saveCredentials([credential]);
+      return [credential];
+    } catch (_) {
+      return [];
     }
   }
 
   @override
-  Future<void> saveCredential(BiometricCredential credential) => _storage.write(
-      key: _key,
-      value:
-          jsonEncode({'userId': credential.userId, 'token': credential.token}));
-
-  @override
-  Future<void> clear() => _storage.delete(key: _key);
+  Future<void> saveCredentials(List<BiometricCredential> credentials) =>
+      credentials.isEmpty
+          ? _storage.delete(key: _key)
+          : _storage.write(
+              key: _key,
+              value: jsonEncode([for (final c in credentials) c.toJson()]));
 }

@@ -45,14 +45,16 @@ class FakeBiometricAccess implements BiometricAccess {
 }
 
 class MemoryBiometricSettings implements BiometricSettingsStore {
-  BiometricCredential? credential;
+  List<BiometricCredential> credentials = [];
+  BiometricCredential? get credential =>
+      credentials.isEmpty ? null : credentials.single;
+  set credential(BiometricCredential? value) =>
+      credentials = [if (value != null) value];
   @override
-  Future<BiometricCredential?> readCredential() async => credential;
+  Future<List<BiometricCredential>> readCredentials() async => credentials;
   @override
-  Future<void> saveCredential(BiometricCredential credential) async =>
-      this.credential = credential;
-  @override
-  Future<void> clear() async => credential = null;
+  Future<void> saveCredentials(List<BiometricCredential> credentials) async =>
+      this.credentials = List.of(credentials);
 }
 
 class FakeBiometricSessions implements BiometricSessionRepository {
@@ -120,6 +122,13 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: AuthGate(controller: auth)));
     expect(find.byType(LoginScreen), findsOneWidget);
     expect(find.byKey(const Key('login_submit')), findsOneWidget);
+    await tester.enterText(
+        find.byKey(const Key('login_email')), 'someone@else.com');
+    await tester.pump();
+    expect(find.byKey(const Key('login_biometric')), findsNothing);
+    await tester.enterText(
+        find.byKey(const Key('login_email')), ' Member@Example.com ');
+    await tester.pump();
     await tester.ensureVisible(find.byKey(const Key('login_biometric')));
     await tester.tap(find.byKey(const Key('login_biometric')));
     await tester.pumpAndSettle();
@@ -162,11 +171,11 @@ void main() {
     expect(restored.user, isNull);
     expect(restored.biometricLoginAvailable, isTrue);
     biometric.verified = false;
-    await expectLater(
-        restored.signInWithBiometrics(), throwsA(isA<AuthException>()));
+    await expectLater(restored.signInWithBiometrics('member@example.com'),
+        throwsA(isA<AuthException>()));
     expect(restored.user, isNull);
     biometric.verified = true;
-    await restored.signInWithBiometrics();
+    await restored.signInWithBiometrics('member@example.com');
     expect(restored.user?.id, testUser.id);
     expect(store.token, 'fingerprint-session');
     await restored.signOut();
@@ -174,8 +183,8 @@ void main() {
     expect(settings.credential, isNotNull);
     await restored.signIn('member@example.com', 'password');
     expect(restored.biometricsEnabled, isTrue);
-    await restored.signOut();
     await restored.disableBiometrics();
+    await restored.signOut();
     expect(settings.credential, isNull);
     expect(sessions.revoked, ['biometric-token']);
     restored.dispose();
@@ -193,8 +202,8 @@ void main() {
         biometricSettings: settings,
         biometricSessions: sessions);
     await auth.restore();
-    await expectLater(
-        auth.signInWithBiometrics(), throwsA(isA<AuthException>()));
+    await expectLater(auth.signInWithBiometrics('member@example.com'),
+        throwsA(isA<AuthException>()));
     expect(auth.biometricLoginAvailable, isFalse);
     expect(settings.credential, isNull);
     expect(auth.user, isNull);

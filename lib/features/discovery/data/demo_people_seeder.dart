@@ -9,42 +9,42 @@ const _demoPeople = <(String, String, String, double, double)>[
   (
     'demo-amal',
     'Demo Amal · Ariana',
-    'demo.amal@connectly.invalid',
+    'amal@g.m',
     36.8680,
     10.1945
   ),
   (
     'demo-sami',
     'Demo Sami · Ariana',
-    'demo.sami@connectly.invalid',
+    'sami@g.m',
     36.8630,
     10.1885
   ),
   (
     'demo-ines',
     'Demo Ines · Ariana',
-    'demo.ines@connectly.invalid',
+    'ines@g.m',
     36.8585,
     10.1920
   ),
   (
     'demo-nour',
     'Demo Nour · ESPRIT',
-    'demo.nour@connectly.invalid',
+    'nour@g.m',
     36.8570,
     10.2060
   ),
   (
     'demo-youssef',
     'Demo Youssef · ESPRIT',
-    'demo.youssef@connectly.invalid',
+    'youssef@g.m',
     36.8514,
     10.2015
   ),
   (
     'demo-meriem',
     'Demo Meriem · ESPRIT',
-    'demo.meriem@connectly.invalid',
+    'meriem@g.m',
     36.8504,
     10.2085
   ),

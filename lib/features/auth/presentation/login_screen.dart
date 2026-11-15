@@ -11,6 +11,7 @@ class LoginScreen extends StatefulWidget {
     this.preferences,
     this.onSignIn,
     this.onBiometricSignIn,
+    this.biometricAvailableFor,
     this.onCreateAccount,
     this.initialMessage,
     super.key,
@@ -19,7 +20,11 @@ class LoginScreen extends StatefulWidget {
   final VoidCallback onContinueAsGuest;
   final LoginPreferences? preferences;
   final Future<void> Function(String email, String password)? onSignIn;
-  final Future<void> Function()? onBiometricSignIn;
+  final Future<void> Function(String email)? onBiometricSignIn;
+
+  /// Decides whether the typed email has fingerprint login on this phone.
+  /// When null, the fingerprint button shows whenever [onBiometricSignIn] is set.
+  final bool Function(String email)? biometricAvailableFor;
   final VoidCallback? onCreateAccount;
   final String? initialMessage;
 
@@ -46,10 +51,35 @@ class _LoginScreenState extends State<LoginScreen> {
     _emailController.text = savedEmail ?? '';
     _rememberEmail = savedEmail != null && savedEmail.isNotEmpty;
     _message = widget.initialMessage;
+    _emailController.addListener(_emailChanged);
+  }
+
+  bool _showBiometric = false;
+  bool _biometricFor(String email) =>
+      widget.onBiometricSignIn != null &&
+      (widget.biometricAvailableFor?.call(email) ?? true);
+  void _emailChanged() {
+    final show = _biometricFor(_emailController.text);
+    if (show != _showBiometric && mounted) {
+      setState(() => _showBiometric = show);
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _showBiometric = _biometricFor(_emailController.text);
+  }
+
+  @override
+  void didUpdateWidget(LoginScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _showBiometric = _biometricFor(_emailController.text);
   }
 
   @override
   void dispose() {
+    _emailController.removeListener(_emailChanged);
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -112,7 +142,8 @@ class _LoginScreenState extends State<LoginScreen> {
       _message = null;
     });
     try {
-      await signIn();
+      await signIn(_emailController.text.trim());
+      await _saveEmail();
     } on AuthException catch (error) {
       if (mounted) setState(() => _message = error.message);
     } catch (_) {
@@ -339,7 +370,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ],
                       ),
               ),
-              if (widget.onBiometricSignIn != null) ...[
+              if (_showBiometric) ...[
                 const SizedBox(height: 12),
                 OutlinedButton.icon(
                   key: const Key('login_biometric'),

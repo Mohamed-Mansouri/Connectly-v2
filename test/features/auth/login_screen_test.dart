@@ -175,7 +175,7 @@ void main() {
           child: LoginScreen(
             preferences: MemoryLoginPreferences(),
             onContinueAsGuest: () {},
-            onBiometricSignIn: () async {},
+            onBiometricSignIn: (_) async {},
           ),
         ),
       ),
