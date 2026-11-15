@@ -51,3 +51,6 @@ app.*.map.json
 # FVM Version Cache
 .fvm/
 /backend/.vs
+
+# Gmail App Password for password-reset emails (see email_secrets.example.json)
+email_secrets.json

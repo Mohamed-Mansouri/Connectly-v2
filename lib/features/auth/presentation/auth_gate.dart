@@ -30,6 +30,11 @@ class AuthGate extends StatelessWidget {
                 ? controller.signInWithBiometrics
                 : null,
             biometricAvailableFor: controller.canUseBiometricsFor,
+            onRequestPasswordReset: controller.canResetPassword
+                ? controller.requestPasswordReset
+                : null,
+            onResetPassword:
+                controller.canResetPassword ? controller.resetPassword : null,
             onCreateAccount: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (_) => SignupScreen(onSignUp: controller.signUp),

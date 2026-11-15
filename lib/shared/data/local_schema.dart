@@ -79,3 +79,9 @@ const postCommentSchema = [
   created_at TEXT NOT NULL)''',
   'CREATE INDEX post_comments_post_time ON post_comments(post_id, created_at, id)',
 ];
+
+// Version 6 adds one pending password-reset code per account (stored hashed).
+const passwordResetSchema = '''CREATE TABLE password_resets (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  code_hash TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL, expires_at TEXT NOT NULL)''';

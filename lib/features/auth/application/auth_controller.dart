@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../data/auth_session_store.dart';
 import '../data/biometric_access.dart';
+import '../data/password_reset_mailer.dart';
 import '../domain/auth_models.dart';
 
 class AuthController extends ChangeNotifier {
@@ -10,18 +11,24 @@ class AuthController extends ChangeNotifier {
       required AuthSessionStore store,
       BiometricAccess? biometrics,
       BiometricSettingsStore? biometricSettings,
-      BiometricSessionRepository? biometricSessions})
+      BiometricSessionRepository? biometricSessions,
+      PasswordResetRepository? passwordResets,
+      PasswordResetMailer? resetMailer})
       : _repository = repository,
         _store = store,
         _biometrics = biometrics,
         _biometricSettings = biometricSettings,
-        _biometricSessions = biometricSessions;
+        _biometricSessions = biometricSessions,
+        _passwordResets = passwordResets,
+        _resetMailer = resetMailer;
 
   final AuthRepository _repository;
   final AuthSessionStore _store;
   final BiometricAccess? _biometrics;
   final BiometricSettingsStore? _biometricSettings;
   final BiometricSessionRepository? _biometricSessions;
+  final PasswordResetRepository? _passwordResets;
+  final PasswordResetMailer? _resetMailer;
   AuthUser? _user;
   String? _token;
   bool _restoring = true;
@@ -304,6 +311,50 @@ class AuthController extends ChangeNotifier {
             'Fingerprint login expired. Sign in with your password and enable it again.');
       }
       rethrow;
+    }
+  }
+
+  bool get canResetPassword => _passwordResets != null && _resetMailer != null;
+
+  /// Emails a 6-digit code to the account that uses [email].
+  Future<void> requestPasswordReset(String email) async {
+    final resets = _passwordResets;
+    final mailer = _resetMailer;
+    if (resets == null || mailer == null || !mailer.configured) {
+      throw const AuthException(
+          'Password reset email is not set up in this build.');
+    }
+    final reset = await resets.createPasswordResetCode(email);
+    try {
+      await mailer.sendCode(to: reset.email, code: reset.code);
+    } catch (_) {
+      // Let the person retry right away instead of waiting for the cooldown.
+      await resets.cancelPasswordReset(email);
+      rethrow;
+    }
+  }
+
+  /// Sets a new password when [code] matches; every session for the account,
+  /// including its fingerprint login, is signed out.
+  Future<void> resetPassword(
+      String email, String code, String newPassword) async {
+    final resets = _passwordResets;
+    if (resets == null) {
+      throw const AuthException('Password reset is unavailable.');
+    }
+    await resets.resetPassword(email, code, newPassword);
+    final normalized = _normalize(email);
+    final remaining = [
+      for (final c in _biometricCredentials)
+        if (_normalize(c.email) != normalized) c
+    ];
+    if (remaining.length != _biometricCredentials.length) {
+      try {
+        await _saveCredentials(remaining);
+      } catch (_) {
+        // Its token was revoked; the next app start drops it anyway.
+      }
+      notifyListeners();
     }
   }
 

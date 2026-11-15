@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../../app/connectly_theme.dart';
 import '../data/login_preferences.dart';
 import '../domain/auth_models.dart';
+import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({
@@ -12,6 +13,8 @@ class LoginScreen extends StatefulWidget {
     this.onSignIn,
     this.onBiometricSignIn,
     this.biometricAvailableFor,
+    this.onRequestPasswordReset,
+    this.onResetPassword,
     this.onCreateAccount,
     this.initialMessage,
     super.key,
@@ -25,6 +28,9 @@ class LoginScreen extends StatefulWidget {
   /// Decides whether the typed email has fingerprint login on this phone.
   /// When null, the fingerprint button shows whenever [onBiometricSignIn] is set.
   final bool Function(String email)? biometricAvailableFor;
+  final Future<void> Function(String email)? onRequestPasswordReset;
+  final Future<void> Function(String email, String code, String password)?
+      onResetPassword;
   final VoidCallback? onCreateAccount;
   final String? initialMessage;
 
@@ -156,6 +162,23 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _forgotPassword() async {
+    final request = widget.onRequestPasswordReset;
+    final reset = widget.onResetPassword;
+    if (_busy || request == null || reset == null) return;
+    FocusScope.of(context).unfocus();
+    final email = await Navigator.of(context).push<String>(MaterialPageRoute(
+        builder: (_) => ForgotPasswordScreen(
+            initialEmail: _emailController.text.trim(),
+            onRequestCode: request,
+            onReset: reset)));
+    if (!mounted || email == null) return;
+    _emailController.text = email;
+    _passwordController.clear();
+    setState(
+        () => _message = 'Password updated. Sign in with your new password.');
+  }
+
   Future<void> _continueAsGuest() async {
     if (_busy) return;
     FocusScope.of(context).unfocus();
@@ -281,7 +304,18 @@ class _LoginScreenState extends State<LoginScreen> {
                     ? 'Enter your password.'
                     : null,
               ),
-              const SizedBox(height: 10),
+              if (widget.onRequestPasswordReset != null &&
+                  widget.onResetPassword != null)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    key: const Key('login_forgot_password'),
+                    onPressed: _busy ? null : _forgotPassword,
+                    child: const Text('Forgot password?'),
+                  ),
+                )
+              else
+                const SizedBox(height: 10),
               Material(
                 type: MaterialType.transparency,
                 child: CheckboxListTile(

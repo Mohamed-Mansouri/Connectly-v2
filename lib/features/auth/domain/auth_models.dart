@@ -39,3 +39,12 @@ abstract class AuthRepository {
   Future<AuthUser> currentUser(String token);
   Future<void> signOut(String token);
 }
+
+/// Local password reset: a short-lived code is created here, delivered
+/// elsewhere (email), and exchanged for a new password.
+abstract class PasswordResetRepository {
+  /// Returns the new code and the account's stored email address.
+  Future<({String code, String email})> createPasswordResetCode(String email);
+  Future<void> cancelPasswordReset(String email);
+  Future<void> resetPassword(String email, String code, String newPassword);
+}

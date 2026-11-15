@@ -36,7 +36,7 @@ void main() {
             .values
             .single,
         1);
-    expect(await database.db.getVersion(), 5);
+    expect(await database.db.getVersion(), 6);
     await expectLater(
         database.db.insert('posts', {
           'id': 'invalid',

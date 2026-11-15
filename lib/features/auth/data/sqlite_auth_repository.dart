@@ -8,7 +8,10 @@ import 'biometric_access.dart';
 import 'local_passwords.dart';
 
 class SqliteAuthRepository
-    implements AuthRepository, BiometricSessionRepository {
+    implements
+        AuthRepository,
+        BiometricSessionRepository,
+        PasswordResetRepository {
   SqliteAuthRepository(this.database, {LocalPasswords? passwords})
       : _passwords = passwords ?? LocalPasswords();
   final LocalDatabase database;
@@ -134,5 +137,96 @@ class SqliteAuthRepository
   Future<void> signOut(String token) async {
     await database.db.delete('auth_sessions',
         where: 'token_hash = ?', whereArgs: [await _hashToken(token)]);
+  }
+
+  static const resetLifetime = Duration(minutes: 15);
+  static const resetCooldown = Duration(seconds: 60);
+  static const resetMaxAttempts = 5;
+
+  Future<Map<String, Object?>?> _userByEmail(
+      DatabaseExecutor db, String email) async {
+    final rows = await db.query('users',
+        where: 'email = ?', whereArgs: [_email(email)], limit: 1);
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  @override
+  Future<({String code, String email})> createPasswordResetCode(
+      String email) async {
+    final user = await _userByEmail(database.db, email);
+    if (user == null) {
+      throw const AuthException('No account on this phone uses this email.');
+    }
+    final userId = user['id'] as String;
+    final now = DateTime.now().toUtc();
+    final previous = await database.db.query('password_resets',
+        columns: ['created_at'], where: 'user_id = ?', whereArgs: [userId]);
+    if (previous.isNotEmpty &&
+        now.difference(
+                DateTime.parse(previous.single['created_at'] as String)) <
+            resetCooldown) {
+      throw const AuthException(
+          'A code was just sent. Wait a minute before requesting another.');
+    }
+    final code =
+        (Random.secure().nextInt(900000) + 100000).toString(); // 6 digits
+    await database.db.insert(
+        'password_resets',
+        {
+          'user_id': userId,
+          'code_hash': await _hashToken('$userId:$code'),
+          'attempts': 0,
+          'created_at': localTimestamp(now),
+          'expires_at': localTimestamp(now.add(resetLifetime)),
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace);
+    return (code: code, email: user['email'] as String);
+  }
+
+  @override
+  Future<void> cancelPasswordReset(String email) async {
+    final user = await _userByEmail(database.db, email);
+    if (user == null) return;
+    await database.db.delete('password_resets',
+        where: 'user_id = ?', whereArgs: [user['id']]);
+  }
+
+  @override
+  Future<void> resetPassword(
+      String email, String code, String newPassword) async {
+    if (newPassword.length < 8 || newPassword.length > 128) {
+      throw const AuthException('Password must contain 8–128 characters.');
+    }
+    const invalid = AuthException('That code is incorrect or has expired.');
+    final user = await _userByEmail(database.db, email);
+    if (user == null) throw invalid;
+    final userId = user['id'] as String;
+    final rows = await database.db
+        .query('password_resets', where: 'user_id = ?', whereArgs: [userId]);
+    if (rows.isEmpty) throw invalid;
+    final reset = rows.single;
+    final expired = DateTime.parse(reset['expires_at'] as String)
+        .isBefore(DateTime.now().toUtc());
+    if (expired || (reset['attempts'] as int) >= resetMaxAttempts) {
+      await database.db
+          .delete('password_resets', where: 'user_id = ?', whereArgs: [userId]);
+      throw const AuthException('That code has expired. Request a new one.');
+    }
+    if (await _hashToken('$userId:${code.trim()}') != reset['code_hash']) {
+      await database.db.rawUpdate(
+          'UPDATE password_resets SET attempts = attempts + 1 WHERE user_id = ?',
+          [userId]);
+      throw invalid;
+    }
+    final hash = await _passwords.hash(newPassword);
+    await database.db.transaction((txn) async {
+      await txn.update('users', {'password_hash': hash},
+          where: 'id = ?', whereArgs: [userId]);
+      // Sign out everywhere, including saved fingerprint tokens.
+      await txn
+          .delete('auth_sessions', where: 'user_id = ?', whereArgs: [userId]);
+      await txn
+          .delete('password_resets', where: 'user_id = ?', whereArgs: [userId]);
+    });
   }
 }
