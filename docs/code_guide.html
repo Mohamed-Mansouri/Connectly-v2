@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Connectly Technical Report</title>
+<style>
+  body { margin: 0; background: #e9e9e9; color: #000;
+    font-family: "Times New Roman", Times, serif; font-size: 12pt; line-height: 1.5; }
+  .page { background: #fff; max-width: 21cm; margin: 24px auto; padding: 2.5cm 2.2cm;
+    box-shadow: 0 0 6px rgba(0,0,0,.25); box-sizing: border-box; }
+  @media (max-width: 800px) { .page { margin: 0; padding: 24px 16px; box-shadow: none; } }
+  @media print { body { background: #fff; } .page { box-shadow: none; margin: 0; max-width: none; padding: 0; }
+    h1.title-h { page-break-after: avoid; } .break { page-break-before: always; } }
+  .cover { text-align: center; padding: 3cm 0 2cm; }
+  .cover .uni { font-size: 13pt; letter-spacing: .05em; text-transform: uppercase; }
+  .cover h1 { font-size: 24pt; margin: 2.2cm 0 .3cm; }
+  .cover .sub { font-size: 15pt; margin: 0 0 2.5cm; }
+  .cover table { margin: 0 auto; border: none; width: auto; }
+  .cover td { border: none; padding: 3px 12px; text-align: left; }
+  h2 { font-size: 15pt; margin: 28px 0 8px; }
+  h3 { font-size: 13pt; margin: 20px 0 6px; }
+  h4 { font-size: 12pt; margin: 14px 0 4px; font-style: italic; font-weight: normal; }
+  p { margin: 0 0 10px; text-align: justify; }
+  ul, ol { margin: 4px 0 10px; padding-left: 28px; }
+  li { margin: 2px 0; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0 4px; font-size: 11pt; }
+  th, td { border: 1px solid #000; padding: 4px 7px; vertical-align: top; text-align: left; }
+  th { background: #f0f0f0; font-weight: bold; }
+  .caption { text-align: center; font-size: 10.5pt; font-style: italic; margin: 4px 0 16px; }
+  code { font-family: "Courier New", Courier, monospace; font-size: 10.5pt; }
+  pre { font-family: "Courier New", Courier, monospace; font-size: 9.5pt; line-height: 1.35;
+    border: 1px solid #999; background: #fafafa; padding: 8px 10px; margin: 6px 0 4px;
+    white-space: pre-wrap; word-break: break-word; }
+  .toc ol { list-style: none; padding-left: 0; }
+  .toc ol ol { padding-left: 22px; }
+  .toc a { color: #000; text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  .scroll { overflow-x: auto; }
+  td.k { font-family: "Courier New", Courier, monospace; font-size: 10pt; white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="page">
+
+<div class="cover">
+  <div class="uni">University Project</div>
+  <h1>Connectly</h1>
+  <p class="sub" style="text-align:center">Technical Report: Screens, Data Access and Database Model</p>
+  <table>
+    <tr><td><b>Application</b></td><td>Connectly (Flutter, Android)</td></tr>
+    <tr><td><b>Storage</b></td><td>Local SQLite database, schema version 6</td></tr>
+    <tr><td><b>Date</b></td><td>November 2026</td></tr>
+  </table>
+</div>
+
+<div class="toc break">
+  <h2>Table of Contents</h2>
+  <ol>
+    <li><a href="#s1">1. Introduction and Architecture</a></li>
+    <li><a href="#s2">2. Authentication Module</a></li>
+    <li><a href="#s3">3. Login Screen</a></li>
+    <li><a href="#s4">4. Feed Screen</a></li>
+    <li><a href="#s5">5. Messaging Screens</a></li>
+    <li><a href="#s6">6. Profile Screen</a></li>
+    <li><a href="#s7">7. Database Model</a></li>
+    <li><a href="#s8">8. Local Cache Storage with Hive</a></li>
+  </ol>
+</div>
+
+<!-- 1 -->
+<h2 id="s1" class="break">1. Introduction and Architecture</h2>
+<p>Connectly is a social application written in Flutter. All data is stored on the phone in a single SQLite database (<code>connectly_local.db</code>), so the application works without a server. Each feature (authentication, feed, messaging, profile) is organised into the same four layers, and screens never execute SQL directly.</p>
+
+<table>
+  <tr><th>Layer</th><th>Folder</th><th>Responsibility</th></tr>
+  <tr><td>Presentation</td><td><code>presentation/</code></td><td>Screens and widgets (layout, user input)</td></tr>
+  <tr><td>Application</td><td><code>application/</code></td><td>Controllers holding screen state (loading, errors, lists)</td></tr>
+  <tr><td>Domain</td><td><code>domain/</code></td><td>Data models and repository interfaces</td></tr>
+  <tr><td>Data</td><td><code>data/</code></td><td>SQLite repositories that run the SQL queries</td></tr>
+</table>
+<p class="caption">Table 1. Layers used by every feature</p>
+
+<h3>1.1 Application startup</h3>
+<ol>
+  <li><code>main.dart</code> starts <code>LocalAppLoader</code>, which opens the database, creates the demo accounts and builds the <code>AuthController</code>.</li>
+  <li><code>ConnectlyApp</code> provides the database to all screens through <code>LocalDataScope</code> and the signed-in user through <code>AuthScope</code>.</li>
+  <li><code>AuthGate</code> displays the Login screen when no user is signed in, or the main <code>AppShell</code> otherwise.</li>
+  <li><code>AppShell</code> contains a bottom navigation bar with four tabs: Feed, People, Chats and Profile.</li>
+</ol>
+
+<h3>1.2 How a screen obtains its data</h3>
+<p>Each screen asks <code>LocalDataScope</code> for a repository bound to the signed-in user's identifier. Because the identifier is given to the repository, every query is automatically limited to what that user is allowed to see.</p>
+<pre>final userId  = AuthScope.maybeOf(context)?.user?.id;
+final feed    = LocalDataScope.of(context).feedFor(userId);
+final chats   = LocalDataScope.of(context).messagingFor(userId);
+final profile = LocalDataScope.of(context).profileFor(userId);</pre>
+
+<h3>1.3 Storage locations</h3>
+<table>
+  <tr><th>Storage</th><th>Content</th></tr>
+  <tr><td>SQLite</td><td>Users, posts, reactions, comments, friendships, conversations, messages, voice clips, profiles, locations, reset codes</td></tr>
+  <tr><td>Secure storage (Android Keystore)</td><td>Current session token and fingerprint-login tokens</td></tr>
+  <tr><td>Hive (see Section 8)</td><td>Remembered login email; unsent chat drafts and pending messages</td></tr>
+</table>
+<p class="caption">Table 2. Where the application stores data</p>
+
+<!-- 2 -->
+<h2 id="s2" class="break">2. Authentication Module</h2>
+<p>The authentication module (<code>lib/features/auth/</code>) manages accounts, sessions, fingerprint login and password reset. It is used by the Login, Sign-up, Forgot-password and Profile screens.</p>
+
+<h3>2.1 Functions</h3>
+<ul>
+  <li><b>Sign up:</b> creates an account (name 2–80 characters, unique email, password 8–128 characters).</li>
+  <li><b>Sign in:</b> verifies the password and creates a session valid for 7 days.</li>
+  <li><b>Restore:</b> on start-up, reopens the saved session automatically.</li>
+  <li><b>Fingerprint login:</b> each account may enable its own; it is selected by the email typed on the Login screen.</li>
+  <li><b>Forgot password:</b> sends a 6-digit code by email, valid for 15 minutes.</li>
+  <li><b>Sign out:</b> deletes the session.</li>
+</ul>
+
+<h3>2.2 Main files</h3>
+<table>
+  <tr><th>File</th><th>Role</th></tr>
+  <tr><td><code>auth_controller.dart</code></td><td>Holds the signed-in user and exposes all actions</td></tr>
+  <tr><td><code>sqlite_auth_repository.dart</code></td><td>SQL for users, sessions and reset codes</td></tr>
+  <tr><td><code>local_passwords.dart</code></td><td>Password hashing (PBKDF2-SHA256, 120,000 rounds, random salt)</td></tr>
+  <tr><td><code>biometric_access.dart</code></td><td>Fingerprint prompt and storage of fingerprint credentials</td></tr>
+  <tr><td><code>password_reset_mailer.dart</code></td><td>Sends the reset code by email (Gmail SMTP)</td></tr>
+</table>
+<p class="caption">Table 3. Authentication files</p>
+
+<h3>2.3 Data access</h3>
+<p>Passwords are never stored in clear text, and session tokens are stored only as SHA-256 hashes. Signing in reads the user by email, checks the password in Dart, then inserts a session:</p>
+<pre>SELECT * FROM users WHERE email = ? LIMIT 1;
+
+INSERT INTO auth_sessions (token_hash, user_id, created_at, expires_at)
+VALUES (sha256(token), ?, now, now + 7 days);</pre>
+<p>The current user is found from the session token:</p>
+<pre>SELECT u.id, u.name, u.email, u.created_at
+FROM users u JOIN auth_sessions s ON s.user_id = u.id
+WHERE s.token_hash = ? AND s.expires_at > now;</pre>
+<p>A password reset stores a hashed code, then, if the code is correct, updates the password and removes all sessions of the account in one transaction:</p>
+<pre>UPDATE users SET password_hash = ? WHERE id = ?;
+DELETE FROM auth_sessions  WHERE user_id = ?;
+DELETE FROM password_resets WHERE user_id = ?;</pre>
+
+<!-- 3 -->
+<h2 id="s3" class="break">3. Login Screen</h2>
+<p>File: <code>lib/features/auth/presentation/login_screen.dart</code>, with the related screens <code>signup_screen.dart</code> and <code>forgot_password_screen.dart</code>.</p>
+
+<h3>3.1 Functions</h3>
+<ul>
+  <li>Sign in with email and password, with input validation.</li>
+  <li>"Remember my email" option.</li>
+  <li>"Sign in with fingerprint" button, shown only when the typed email has fingerprint login enabled on the phone.</li>
+  <li>"Forgot password?" link, "Create account" and "Continue as a guest".</li>
+</ul>
+
+<h3>3.2 Layout</h3>
+<p>The screen is a single scrollable form. From top to bottom: a welcome title ("Welcome back."), the email field, the password field with a show/hide button, the "Forgot password?" link, the "Remember my email" checkbox, an error message area, the "Sign in" button, the fingerprint button, and finally the "Create account" and "Continue as a guest" buttons. On wide screens (900 pixels or more), the welcome text is placed in a separate column on the left.</p>
+
+<h3>3.3 Data access</h3>
+<p>The Login screen does not access the database itself. <code>AuthGate</code> passes it callbacks such as <code>onSignIn</code> and <code>onBiometricSignIn</code>; these call the <code>AuthController</code>, which uses the authentication repository (Section 2.3). When sign-in succeeds, the controller stores the user and <code>AuthGate</code> replaces the Login screen with the main application.</p>
+
+<h3>3.4 Related screens</h3>
+<table>
+  <tr><th>Screen</th><th>Function and layout</th><th>Data</th></tr>
+  <tr><td>Sign-up</td><td>Fields for name, email, password and confirmation; "Create account" button</td><td>Inserts a row in <code>users</code> and a session in one transaction</td></tr>
+  <tr><td>Forgot password</td><td>Step 1: email and "Send code". Step 2: code, new password, confirmation, with a 60-second resend timer</td><td>Writes and checks <code>password_resets</code>; updates <code>users</code></td></tr>
+</table>
+<p class="caption">Table 4. Screens related to Login</p>
+
+<!-- 4 -->
+<h2 id="s4" class="break">4. Feed Screen</h2>
+<p>Folder: <code>lib/features/feed/</code>. The feed shows posts written by the user and by the people the user follows or is friends with, newest first.</p>
+
+<h3>4.1 Functions</h3>
+<ul>
+  <li>Create a post (1–3,000 characters) and delete one's own posts.</li>
+  <li>Filter the feed by Connections, Friends or Following.</li>
+  <li>React to a post (Like, Love, Celebrate, Insightful); one reaction per person.</li>
+  <li>Tap the reaction counts to see the names of the people who reacted.</li>
+  <li>Comment on a post (1–1,000 characters); delete one's own comments or any comment on one's own post.</li>
+  <li>Pull down to refresh; load older posts 20 at a time.</li>
+</ul>
+
+<h3>4.2 Layout</h3>
+<p>The screen is a vertical list. At the top are the title "Your daily catch-up", a "What's on your mind?" box that opens the post composer, and three filter chips. Below them, each post is displayed as a card containing the author's avatar, name and time, the post text, the reaction and comment counts, and two buttons: "React" and "Comment". Comments and the list of people who reacted open in sheets that slide up from the bottom of the screen.</p>
+<table>
+  <tr><th>File</th><th>Role</th></tr>
+  <tr><td><code>feed_screen.dart</code></td><td>The list, filters and opening of sheets</td></tr>
+  <tr><td><code>post_card.dart</code></td><td>Display of one post</td></tr>
+  <tr><td><code>create_post_sheet.dart</code></td><td>Post composer</td></tr>
+  <tr><td><code>post_sheets.dart</code></td><td>Comments sheet and reactions sheet</td></tr>
+  <tr><td><code>feed_controller.dart</code></td><td>Post list, paging and loading states</td></tr>
+  <tr><td><code>sqlite_feed_repository.dart</code></td><td>All feed SQL queries</td></tr>
+</table>
+<p class="caption">Table 5. Feed files</p>
+
+<h3>4.3 Data access</h3>
+<h4>Loading posts</h4>
+<p>One query returns the posts together with their reaction counts, the current user's reaction and the number of comments. The <code>WHERE</code> clause changes with the chosen filter. Twenty-one rows are requested; if the twenty-first exists, a "Load more posts" button is shown.</p>
+<pre>SELECT p.id, p.author_id, u.name AS author_name, p.body, p.created_at,
+  (SELECT kind FROM post_reactions r WHERE r.post_id = p.id AND r.user_id = :me) AS my_reaction,
+  (SELECT COUNT(*) FROM post_reactions r WHERE r.post_id = p.id AND r.kind = 'like') AS likes,
+  ... (same for love, celebrate, insightful) ...,
+  (SELECT COUNT(*) FROM post_comments c WHERE c.post_id = p.id) AS comments
+FROM posts p JOIN users u ON u.id = p.author_id
+WHERE (p.author_id = :me OR followed(p.author_id) OR friend(p.author_id))
+ORDER BY p.created_at DESC, p.id DESC
+LIMIT 21;</pre>
+<h4>Reacting</h4>
+<pre>INSERT INTO post_reactions (post_id, user_id, kind) VALUES (?, :me, ?)
+ON CONFLICT(post_id, user_id) DO UPDATE SET kind = excluded.kind;</pre>
+<h4>People who reacted</h4>
+<pre>SELECT r.user_id, u.name, r.kind
+FROM post_reactions r JOIN users u ON u.id = r.user_id
+WHERE r.post_id = ? ORDER BY u.name;</pre>
+<h4>Comments</h4>
+<pre>SELECT c.id, c.body, c.created_at, u.name AS author_name
+FROM post_comments c JOIN users u ON u.id = c.author_id
+WHERE c.post_id = ? ORDER BY c.created_at;</pre>
+<p>Before any action, the repository checks that the post is visible to the user. Deleting a post also deletes its reactions and comments automatically (<code>ON DELETE CASCADE</code>).</p>
+
+<!-- 5 -->
+<h2 id="s5" class="break">5. Messaging Screens</h2>
+<p>Folder: <code>lib/features/messaging/</code>. Messaging consists of the Chats inbox and the Conversation screen, and supports direct and group conversations with text and voice messages.</p>
+
+<h3>5.1 Functions</h3>
+<ul>
+  <li><b>Inbox:</b> search, a list of friends (tapping one opens a direct chat), and recent conversations with the last message and the number of unread messages. The list refreshes every 10 seconds.</li>
+  <li><b>Conversation:</b> displays messages 50 at a time, sends text (1–4,000 characters), records and plays voice messages (up to 2 minutes), and shows group members. New messages are checked every 5 seconds and marked as read.</li>
+  <li>Unsent drafts are kept after the application is closed.</li>
+</ul>
+
+<h3>5.2 Layout</h3>
+<p>The inbox shows the title "Chats", a search field, a "Friends" section and a "Recent chats" list in which each row has an avatar, the conversation name, the last message, its time and an unread badge. The Conversation screen has an app bar with the conversation name, the list of message bubbles (own messages on the right), and an input bar at the bottom with a microphone button, a text field and a send button.</p>
+<table>
+  <tr><th>File</th><th>Role</th></tr>
+  <tr><td><code>messages_screen.dart</code></td><td>Inbox</td></tr>
+  <tr><td><code>conversation_screen.dart</code></td><td>Conversation, voice recording, member list</td></tr>
+  <tr><td><code>chat_controller.dart</code></td><td>Messages, periodic refresh, drafts, retry of failed sends</td></tr>
+  <tr><td><code>voice_recorder.dart</code></td><td>Microphone recording</td></tr>
+  <tr><td><code>sqlite_messaging_repository.dart</code></td><td>All messaging SQL queries</td></tr>
+</table>
+<p class="caption">Table 6. Messaging files</p>
+
+<h3>5.3 Data access</h3>
+<h4>Inbox</h4>
+<p>For each conversation the user belongs to, the query finds its title (the other person's name for a direct chat), its last message and the number of unread messages, computed from the user's <code>last_read_sequence</code>.</p>
+<pre>SELECT c.id, c.kind, title, last.body, last.created_at,
+  (SELECT COUNT(*) FROM messages m
+    WHERE m.conversation_id = c.id
+      AND m.sequence > mine.last_read_sequence
+      AND m.sender_id <> :me) AS unread_count
+FROM conversations c
+JOIN conversation_members mine ON mine.conversation_id = c.id AND mine.user_id = :me
+LEFT JOIN messages last ON last.sequence = (latest message of c)
+ORDER BY last.created_at DESC LIMIT 100;</pre>
+<h4>Messages of a conversation</h4>
+<pre>SELECT m.sequence, m.sender_id, u.name, m.body, m.created_at, a.duration_ms
+FROM messages m JOIN users u ON u.id = m.sender_id
+LEFT JOIN message_audio a ON a.message_sequence = m.sequence
+WHERE m.conversation_id = ? AND m.sequence > :lastSeen
+ORDER BY m.sequence LIMIT 51;</pre>
+<h4>Sending a message</h4>
+<p>Each message receives a random <code>client_id</code>. If sending is retried after an error, the unique constraint prevents a duplicate message.</p>
+<pre>INSERT INTO messages (conversation_id, sender_id, client_id, body, created_at)
+VALUES (?, :me, ?, ?, now)
+ON CONFLICT(conversation_id, sender_id, client_id) DO NOTHING;</pre>
+<h4>Marking as read</h4>
+<pre>UPDATE conversation_members SET last_read_sequence = ?
+WHERE conversation_id = ? AND user_id = :me;</pre>
+<p>Voice messages are stored as a message with the text "Voice message"; the audio itself is stored in the <code>message_audio</code> table and loaded only when it is played.</p>
+
+<!-- 6 -->
+<h2 id="s6" class="break">6. Profile Screen</h2>
+<p>File: <code>lib/features/auth/presentation/profile_screen.dart</code>, using <code>SqliteProfileRepository</code>.</p>
+
+<h3>6.1 Functions</h3>
+<ul>
+  <li>Edit name, email and a short biography (up to 160 characters).</li>
+  <li>Choose or remove a profile photo (resized to 512 × 512 pixels).</li>
+  <li>Set a location on the map and choose whether other accounts can see it.</li>
+  <li>Enable or disable fingerprint login.</li>
+  <li>Sign out.</li>
+</ul>
+
+<h3>6.2 Layout</h3>
+<p>A vertical list showing the profile photo with "Choose photo" and "Remove photo" buttons, the name, email and biography, and an "Edit profile" button that turns these into input fields. Below are a "Location" card, a "Fingerprint login" card and a "Sign out" button. A guest sees an invitation to sign in instead.</p>
+
+<h3>6.3 Data access</h3>
+<p>The profile is read with one query. <code>LEFT JOIN</code> is used because a new account does not yet have a profile or location row.</p>
+<pre>SELECT u.name, u.email, p.bio, p.photo, l.latitude, l.longitude, l.visible
+FROM users u
+LEFT JOIN user_profiles  p ON p.user_id = u.id
+LEFT JOIN user_locations l ON l.user_id = u.id
+WHERE u.id = :me;</pre>
+<p>Saving the details updates two tables in one transaction:</p>
+<pre>UPDATE users SET name = ?, email = ? WHERE id = :me;
+INSERT INTO user_profiles (user_id, bio, updated_at) VALUES (:me, ?, now)
+ON CONFLICT(user_id) DO UPDATE SET bio = excluded.bio, updated_at = excluded.updated_at;</pre>
+<p>After saving, the screen calls <code>refreshUser()</code> so that the new name and email appear everywhere in the application.</p>
+
+<!-- 7 -->
+<h2 id="s7" class="break">7. Database Model</h2>
+<p>The database contains fifteen tables. Foreign keys are enabled, and every foreign key uses <code>ON DELETE CASCADE</code>: deleting a user or a post removes all rows that depend on it. Dates are stored as ISO-8601 text in UTC. In the tables below, <b>PK</b> means primary key and <b>FK</b> means foreign key.</p>
+
+<h3>7.1 Relationships</h3>
+<table>
+  <tr><th>Table</th><th>Related to</th><th>Relationship</th></tr>
+  <tr><td>users</td><td>posts, post_comments, messages</td><td>One user writes many posts, comments and messages</td></tr>
+  <tr><td>users</td><td>user_profiles, user_locations, password_resets</td><td>One-to-one (optional)</td></tr>
+  <tr><td>users</td><td>auth_sessions</td><td>One user has many sessions</td></tr>
+  <tr><td>users ↔ users</td><td>follows</td><td>Many-to-many (one direction)</td></tr>
+  <tr><td>users ↔ users</td><td>friendships</td><td>Many-to-many (mutual, pending or accepted)</td></tr>
+  <tr><td>users ↔ posts</td><td>post_reactions</td><td>Many-to-many, one reaction per user per post</td></tr>
+  <tr><td>posts</td><td>post_comments</td><td>One post has many comments</td></tr>
+  <tr><td>users ↔ conversations</td><td>conversation_members</td><td>Many-to-many</td></tr>
+  <tr><td>conversations</td><td>messages</td><td>One conversation has many messages</td></tr>
+  <tr><td>messages</td><td>message_audio</td><td>One-to-one (voice messages only)</td></tr>
+</table>
+<p class="caption">Table 7. Relationships between tables</p>
+
+<h3>7.2 Table definitions</h3>
+<div class="scroll">
+<table>
+  <tr><th>Table</th><th>Column</th><th>Type</th><th>Key</th><th>Description</th></tr>
+  <tr><td rowspan="5"><b>users</b></td><td class="k">id</td><td>TEXT</td><td>PK</td><td>Unique identifier (UUID)</td></tr>
+  <tr><td class="k">email</td><td>TEXT</td><td></td><td>Unique, case-insensitive</td></tr>
+  <tr><td class="k">name</td><td>TEXT</td><td></td><td>Display name</td></tr>
+  <tr><td class="k">password_hash</td><td>TEXT</td><td></td><td>PBKDF2 hash</td></tr>
+  <tr><td class="k">created_at</td><td>TEXT</td><td></td><td>Creation date</td></tr>
+
+  <tr><td rowspan="4"><b>auth_sessions</b></td><td class="k">token_hash</td><td>TEXT</td><td>PK</td><td>SHA-256 of the session token</td></tr>
+  <tr><td class="k">user_id</td><td>TEXT</td><td>FK users</td><td>Owner of the session</td></tr>
+  <tr><td class="k">expires_at</td><td>TEXT</td><td></td><td>7 days (90 for fingerprint)</td></tr>
+  <tr><td class="k">created_at</td><td>TEXT</td><td></td><td>Creation date</td></tr>
+
+  <tr><td rowspan="4"><b>user_profiles</b></td><td class="k">user_id</td><td>TEXT</td><td>PK, FK users</td><td>Profile owner</td></tr>
+  <tr><td class="k">bio</td><td>TEXT</td><td></td><td>Up to 160 characters</td></tr>
+  <tr><td class="k">photo</td><td>BLOB</td><td></td><td>Image, up to 2 MB (optional)</td></tr>
+  <tr><td class="k">updated_at</td><td>TEXT</td><td></td><td>Last change</td></tr>
+
+  <tr><td rowspan="5"><b>user_locations</b></td><td class="k">user_id</td><td>TEXT</td><td>PK, FK users</td><td>Location owner</td></tr>
+  <tr><td class="k">latitude</td><td>REAL</td><td></td><td>−90 to 90</td></tr>
+  <tr><td class="k">longitude</td><td>REAL</td><td></td><td>−180 to 180</td></tr>
+  <tr><td class="k">visible</td><td>INTEGER</td><td></td><td>1 = shown to other accounts</td></tr>
+  <tr><td class="k">updated_at</td><td>TEXT</td><td></td><td>Last change</td></tr>
+
+  <tr><td rowspan="5"><b>password_resets</b></td><td class="k">user_id</td><td>TEXT</td><td>PK, FK users</td><td>Account being reset</td></tr>
+  <tr><td class="k">code_hash</td><td>TEXT</td><td></td><td>Hash of the 6-digit code</td></tr>
+  <tr><td class="k">attempts</td><td>INTEGER</td><td></td><td>Wrong attempts (maximum 5)</td></tr>
+  <tr><td class="k">created_at</td><td>TEXT</td><td></td><td>Used for the 60-second resend limit</td></tr>
+  <tr><td class="k">expires_at</td><td>TEXT</td><td></td><td>15 minutes after creation</td></tr>
+
+  <tr><td rowspan="3"><b>follows</b></td><td class="k">follower_id</td><td>TEXT</td><td>PK, FK users</td><td>User who follows</td></tr>
+  <tr><td class="k">followed_id</td><td>TEXT</td><td>PK, FK users</td><td>User being followed</td></tr>
+  <tr><td class="k">created_at</td><td>TEXT</td><td></td><td>Date</td></tr>
+
+  <tr><td rowspan="5"><b>friendships</b></td><td class="k">user_low_id</td><td>TEXT</td><td>PK, FK users</td><td>Smaller identifier of the pair</td></tr>
+  <tr><td class="k">user_high_id</td><td>TEXT</td><td>PK, FK users</td><td>Larger identifier of the pair</td></tr>
+  <tr><td class="k">requested_by</td><td>TEXT</td><td>FK users</td><td>Who sent the request</td></tr>
+  <tr><td class="k">status</td><td>TEXT</td><td></td><td>'pending' or 'accepted'</td></tr>
+  <tr><td class="k">created_at</td><td>TEXT</td><td></td><td>Date</td></tr>
+
+  <tr><td rowspan="4"><b>posts</b></td><td class="k">id</td><td>TEXT</td><td>PK</td><td>Unique identifier</td></tr>
+  <tr><td class="k">author_id</td><td>TEXT</td><td>FK users</td><td>Author</td></tr>
+  <tr><td class="k">body</td><td>TEXT</td><td></td><td>1 to 3,000 characters</td></tr>
+  <tr><td class="k">created_at</td><td>TEXT</td><td></td><td>Publication date</td></tr>
+
+  <tr><td rowspan="3"><b>post_reactions</b></td><td class="k">post_id</td><td>TEXT</td><td>PK, FK posts</td><td>Post</td></tr>
+  <tr><td class="k">user_id</td><td>TEXT</td><td>PK, FK users</td><td>User who reacted</td></tr>
+  <tr><td class="k">kind</td><td>TEXT</td><td></td><td>like, love, celebrate or insightful</td></tr>
+
+  <tr><td rowspan="5"><b>post_comments</b></td><td class="k">id</td><td>TEXT</td><td>PK</td><td>Unique identifier</td></tr>
+  <tr><td class="k">post_id</td><td>TEXT</td><td>FK posts</td><td>Commented post</td></tr>
+  <tr><td class="k">author_id</td><td>TEXT</td><td>FK users</td><td>Author</td></tr>
+  <tr><td class="k">body</td><td>TEXT</td><td></td><td>1 to 1,000 characters</td></tr>
+  <tr><td class="k">created_at</td><td>TEXT</td><td></td><td>Date</td></tr>
+
+  <tr><td rowspan="6"><b>conversations</b></td><td class="k">id</td><td>TEXT</td><td>PK</td><td>Unique identifier</td></tr>
+  <tr><td class="k">kind</td><td>TEXT</td><td></td><td>'direct' or 'group'</td></tr>
+  <tr><td class="k">title</td><td>TEXT</td><td></td><td>Group name (groups only)</td></tr>
+  <tr><td class="k">direct_key</td><td>TEXT</td><td></td><td>Unique pair key (direct chats only)</td></tr>
+  <tr><td class="k">created_by</td><td>TEXT</td><td>FK users</td><td>Creator</td></tr>
+  <tr><td class="k">created_at</td><td>TEXT</td><td></td><td>Date</td></tr>
+
+  <tr><td rowspan="3"><b>conversation_members</b></td><td class="k">conversation_id</td><td>TEXT</td><td>PK, FK conversations</td><td>Conversation</td></tr>
+  <tr><td class="k">user_id</td><td>TEXT</td><td>PK, FK users</td><td>Member</td></tr>
+  <tr><td class="k">last_read_sequence</td><td>INTEGER</td><td></td><td>Last message read (for unread count)</td></tr>
+
+  <tr><td rowspan="6"><b>messages</b></td><td class="k">sequence</td><td>INTEGER</td><td>PK</td><td>Auto-incremented order</td></tr>
+  <tr><td class="k">conversation_id</td><td>TEXT</td><td>FK conversations</td><td>Conversation</td></tr>
+  <tr><td class="k">sender_id</td><td>TEXT</td><td>FK users</td><td>Sender</td></tr>
+  <tr><td class="k">client_id</td><td>TEXT</td><td></td><td>Prevents duplicates on retry</td></tr>
+  <tr><td class="k">body</td><td>TEXT</td><td></td><td>1 to 4,000 characters</td></tr>
+  <tr><td class="k">created_at</td><td>TEXT</td><td></td><td>Date</td></tr>
+
+  <tr><td rowspan="3"><b>message_audio</b></td><td class="k">message_sequence</td><td>INTEGER</td><td>PK, FK messages</td><td>Voice message</td></tr>
+  <tr><td class="k">data</td><td>BLOB</td><td></td><td>Audio, up to 2 MB</td></tr>
+  <tr><td class="k">duration_ms</td><td>INTEGER</td><td></td><td>Up to 120,000 (2 minutes)</td></tr>
+
+  <tr><td rowspan="2"><b>demo_seed_state</b></td><td class="k">key</td><td>TEXT</td><td>PK</td><td>Setting name</td></tr>
+  <tr><td class="k">value</td><td>TEXT</td><td></td><td>Demo-account password version</td></tr>
+</table>
+</div>
+<p class="caption">Table 8. Columns of every table</p>
+
+<h3>7.3 Schema versions</h3>
+<p>When the application is updated, <code>LocalDatabase.open()</code> applies only the missing versions, so existing data is kept.</p>
+<table>
+  <tr><th>Version</th><th>Tables added</th></tr>
+  <tr><td>1</td><td>users, auth_sessions, posts, follows, friendships, post_reactions, conversations, conversation_members, messages</td></tr>
+  <tr><td>2</td><td>user_locations</td></tr>
+  <tr><td>3</td><td>user_profiles</td></tr>
+  <tr><td>4</td><td>message_audio</td></tr>
+  <tr><td>5</td><td>post_comments</td></tr>
+  <tr><td>6</td><td>password_resets</td></tr>
+</table>
+<p class="caption">Table 9. Database versions</p>
+
+<!-- 8 -->
+<h2 id="s8" class="break">8. Local Cache Storage with Hive</h2>
+<p>Besides the SQLite database, the application uses <b>Hive</b> (package <code>hive_flutter</code>), a lightweight key–value store written in pure Dart. Hive keeps data in <i>boxes</i>; each box is a file in the application's private folder on the phone and behaves like a persistent map of keys to values. Reading from an open box is synchronous and very fast, which makes Hive suitable for small pieces of state that must be available immediately when a screen opens.</p>
+<p>Hive is used only as a <b>cache for user-interface state</b>. It never holds the real application data (posts, messages, accounts), which stays in SQLite, and it never holds secrets: passwords are hashed in SQLite and session tokens are kept in secure storage (Android Keystore).</p>
+
+<h3>8.1 Why Hive in addition to SQLite</h3>
+<table>
+  <tr><th>Criterion</th><th>SQLite</th><th>Hive</th></tr>
+  <tr><td>Data model</td><td>Relational tables with foreign keys</td><td>Key–value pairs inside a box</td></tr>
+  <tr><td>Typical use in Connectly</td><td>Accounts, posts, messages, profiles</td><td>Remembered email, chat drafts, unsent messages</td></tr>
+  <tr><td>Queries</td><td>SQL (joins, filters, ordering)</td><td>Direct lookup by key</td></tr>
+  <tr><td>Writing frequency</td><td>On user actions (publish, send)</td><td>On every few keystrokes (drafts)</td></tr>
+</table>
+<p class="caption">Table 10. Comparison of the two local stores</p>
+
+<h3>8.2 Boxes used by the application</h3>
+<table>
+  <tr><th>Box</th><th>Key</th><th>Value</th><th>File</th></tr>
+  <tr><td class="k">auth_preferences</td><td class="k">remembered_email</td><td>The email typed on the Login screen when “Remember email” is checked</td><td><code>auth/data/login_preferences.dart</code></td></tr>
+  <tr><td class="k">messaging_local</td><td class="k">&lt;userId&gt;:&lt;conversationId&gt;</td><td>JSON text with the current draft and the outbox of messages not yet confirmed</td><td><code>messaging/data/chat_local_store.dart</code></td></tr>
+</table>
+<p class="caption">Table 11. Hive boxes</p>
+
+<h3>8.3 Remembered login email</h3>
+<p><code>HiveLoginPreferences</code> opens the box once at start-up (in <code>LocalAppLoader</code>) and is passed to the Login screen. When the screen opens it reads the saved email and fills the email field; after a successful sign-in it saves or deletes the value depending on the “Remember email” checkbox.</p>
+<pre>static Future&lt;HiveLoginPreferences&gt; open() async {
+  await Hive.initFlutter();
+  return HiveLoginPreferences(await Hive.openBox&lt;String&gt;('auth_preferences'));
+}
+
+String? get rememberedEmail =&gt; _box.get('remembered_email');
+
+Future&lt;void&gt; saveEmail(String? email) async {
+  if (email == null || email.isEmpty) {
+    await _box.delete('remembered_email');
+  } else {
+    await _box.put('remembered_email', email);
+  }
+}</pre>
+
+<h3>8.4 Chat drafts and pending messages</h3>
+<p><code>HiveChatLocalStore</code> keeps, for each user and conversation, the text being typed and the messages that are waiting to be written. The key combines the user identifier and the conversation identifier, so two accounts on the same phone never see each other's drafts. The value is a JSON document:</p>
+<pre>{
+  "draft": "See you tomorrow at",
+  "outbox": [
+    { "clientId": "c-1731660000", "body": "Hello!", "createdAt": "2026-11-15T10:20:00.000" }
+  ]
+}</pre>
+<p>The workflow is as follows:</p>
+<ol>
+  <li>When a conversation opens, <code>ChatController</code> reads the record and restores the draft into the text field.</li>
+  <li>While the user types, the draft is saved 250 ms after the last keystroke (a <i>debounce</i>), which avoids writing to disk on every character.</li>
+  <li>When the user sends a message, it is first added to the outbox in Hive, then written to the <code>messages</code> table in SQLite. Once SQLite confirms it, the message is removed from the outbox.</li>
+  <li>If the application closes before confirmation, the message reappears after restart marked <i>“Not confirmed”</i> with a Retry button; it is not resent automatically, to avoid duplicates.</li>
+  <li>When both the draft and the outbox are empty, the key is deleted so the box does not grow.</li>
+</ol>
+<pre>Future&lt;void&gt; write(String userId, String conversationId, String encoded) async {
+  final data = ChatLocalData.decode(encoded);
+  if (data.draft.isEmpty &amp;&amp; data.outbox.isEmpty) {
+    await box.delete('$userId:$conversationId');
+  } else {
+    await box.put('$userId:$conversationId', encoded);
+  }
+}</pre>
+
+<h3>8.5 Error handling and testing</h3>
+<p>Both stores are defined behind an interface (<code>LoginPreferences</code>, <code>ChatLocalStore</code>). If Hive cannot be opened, the Messages screen falls back to <code>MemoryChatLocalStore</code>, an in-memory implementation, so the chat remains usable and a notice is shown. The same in-memory implementation is used in the automated tests, which therefore run without writing files.</p>
+<p>Hive data is removed together with all other data when the user clears the application's storage in Android settings. Logging out does not delete drafts; they simply load only for the account that wrote them.</p>
+
+</div>
+</body>
+</html>
