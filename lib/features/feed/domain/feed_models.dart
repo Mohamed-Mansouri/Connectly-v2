@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 class FeedPost {
   const FeedPost(
       {required this.id,
@@ -7,7 +9,9 @@ class FeedPost {
       required this.createdAt,
       required this.reactions,
       this.myReaction,
-      this.commentCount = 0});
+      this.commentCount = 0,
+      this.imageWidth,
+      this.imageHeight});
 
   final String id;
   final String authorId;
@@ -17,6 +21,11 @@ class FeedPost {
   final Map<String, int> reactions;
   final String? myReaction;
   final int commentCount;
+
+  /// Size of the attached photo, or null when the post has none.
+  final int? imageWidth;
+  final int? imageHeight;
+  bool get hasImage => imageWidth != null && imageHeight != null;
   int get reactionCount =>
       reactions.values.fold(0, (sum, count) => sum + count);
 
@@ -28,7 +37,9 @@ class FeedPost {
       createdAt: createdAt,
       reactions: reactions,
       myReaction: myReaction,
-      commentCount: commentCount ?? this.commentCount);
+      commentCount: commentCount ?? this.commentCount,
+      imageWidth: imageWidth,
+      imageHeight: imageHeight);
 
   factory FeedPost.fromJson(Map<String, dynamic> json) {
     final author = json['author'] as Map<String, dynamic>;
@@ -42,6 +53,15 @@ class FeedPost {
         myReaction: json['myReaction'] as String?,
         commentCount: json['commentCount'] as int? ?? 0);
   }
+}
+
+/// A photo chosen in the composer, already resized to JPEG.
+class FeedImageUpload {
+  const FeedImageUpload(
+      {required this.bytes, required this.width, required this.height});
+  final Uint8List bytes;
+  final int width;
+  final int height;
 }
 
 class FeedComment {
@@ -66,6 +86,21 @@ class FeedReactor {
   final String userId;
   final String name;
   final String kind;
+}
+
+/// A trending hashtag and how many visible posts use it.
+class FeedTrend {
+  const FeedTrend(this.tag, this.count);
+  final String tag;
+  final int count;
+}
+
+/// Autocomplete entry for the composer and search box.
+/// [value] is inserted as typed (`#travel`, `@amal`); [label] explains it.
+class FeedSuggestion {
+  const FeedSuggestion(this.value, this.label);
+  final String value;
+  final String label;
 }
 
 class FeedPage {
@@ -101,13 +136,25 @@ class FeedException implements Exception {
 
 abstract class FeedRepository {
   Future<FeedPage> load({required String scope, String? cursor});
-  Future<FeedPost> create(String body);
+  Future<FeedPost> create(String body, {FeedImageUpload? image});
+
+  /// JPEG bytes of a visible post's photo.
+  Future<Uint8List> postImage(String postId);
   Future<void> delete(String postId);
   Future<FeedPost> react(String postId, String? kind);
   Future<List<FeedReactor>> reactors(String postId);
   Future<List<FeedComment>> comments(String postId);
   Future<FeedComment> addComment(String postId, String body);
   Future<void> deleteComment(String commentId);
+
+  /// Posts visible to the viewer that match `#tags`, `@handles` and words.
+  Future<List<FeedPost>> search(String query);
+
+  /// Most used hashtags in visible posts from the last 30 days.
+  Future<List<FeedTrend>> trendingTags();
+
+  /// Completions for a token that starts with `#` or `@`.
+  Future<List<FeedSuggestion>> suggestions(String token);
   Future<List<FeedPerson>> people({String search = '', bool requests = false});
   Future<void> follow(String personId, bool following);
   Future<void> friendship(String personId, String action);

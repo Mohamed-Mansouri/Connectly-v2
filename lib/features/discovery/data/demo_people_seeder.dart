@@ -6,48 +6,12 @@ const demoPeoplePassword = '12345678';
 const _passwordRevision = '12345678-v1';
 
 const _demoPeople = <(String, String, String, double, double)>[
-  (
-    'demo-amal',
-    'Demo Amal · Ariana',
-    'amal@g.m',
-    36.8680,
-    10.1945
-  ),
-  (
-    'demo-sami',
-    'Demo Sami · Ariana',
-    'sami@g.m',
-    36.8630,
-    10.1885
-  ),
-  (
-    'demo-ines',
-    'Demo Ines · Ariana',
-    'ines@g.m',
-    36.8585,
-    10.1920
-  ),
-  (
-    'demo-nour',
-    'Demo Nour · ESPRIT',
-    'nour@g.m',
-    36.8570,
-    10.2060
-  ),
-  (
-    'demo-youssef',
-    'Demo Youssef · ESPRIT',
-    'youssef@g.m',
-    36.8514,
-    10.2015
-  ),
-  (
-    'demo-meriem',
-    'Demo Meriem · ESPRIT',
-    'meriem@g.m',
-    36.8504,
-    10.2085
-  ),
+  ('demo-amal', 'Demo Amal · Ariana', 'amal@g.m', 36.8680, 10.1945),
+  ('demo-sami', 'Demo Sami · Ariana', 'sami@g.m', 36.8630, 10.1885),
+  ('demo-ines', 'Demo Ines · Ariana', 'ines@g.m', 36.8585, 10.1920),
+  ('demo-nour', 'Demo Nour · ESPRIT', 'nour@g.m', 36.8570, 10.2060),
+  ('demo-youssef', 'Demo Youssef · ESPRIT', 'youssef@g.m', 36.8514, 10.2015),
+  ('demo-meriem', 'Demo Meriem · ESPRIT', 'meriem@g.m', 36.8504, 10.2085),
 ];
 
 /// Adds missing demo accounts once; existing profiles, pins, and links are kept.

@@ -85,3 +85,45 @@ const passwordResetSchema = '''CREATE TABLE password_resets (
   user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   code_hash TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL, expires_at TEXT NOT NULL)''';
+
+// Version 7 indexes hashtags and @mentions so posts can be searched by them.
+const postLinkSchema = [
+  '''CREATE TABLE post_tags (
+  post_id TEXT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  tag TEXT NOT NULL CHECK(length(tag) BETWEEN 1 AND 40),
+  PRIMARY KEY(post_id, tag))''',
+  'CREATE INDEX post_tags_tag ON post_tags(tag, post_id)',
+  '''CREATE TABLE post_mentions (
+  post_id TEXT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY(post_id, user_id))''',
+  'CREATE INDEX post_mentions_user ON post_mentions(user_id, post_id)',
+];
+
+// Version 7 full-text index of post bodies (SQLite FTS4). Triggers keep it in
+// step with `posts`, including deletes cascaded from a removed account.
+// Created separately because a device SQLite might lack the FTS module; search
+// then falls back to plain substring matching.
+const postSearchTriggers = [
+  '''CREATE TRIGGER posts_fts_insert AFTER INSERT ON posts BEGIN
+  INSERT INTO posts_fts(post_id, body) VALUES (new.id, new.body); END''',
+  '''CREATE TRIGGER posts_fts_delete AFTER DELETE ON posts BEGIN
+  DELETE FROM posts_fts WHERE post_id = old.id; END''',
+  '''CREATE TRIGGER posts_fts_update AFTER UPDATE OF body ON posts BEGIN
+  UPDATE posts_fts SET body = new.body WHERE post_id = new.id; END''',
+];
+// Tried in order: Android's system SQLite ships FTS4; some desktop builds
+// (used by the tests) only ship FTS5. Both accept the same `word*` queries.
+const postSearchTable = [
+  'CREATE VIRTUAL TABLE posts_fts USING fts4(post_id, body, notindexed=post_id, tokenize=unicode61)',
+  'CREATE VIRTUAL TABLE posts_fts USING fts4(post_id, body, notindexed=post_id)',
+  'CREATE VIRTUAL TABLE posts_fts USING fts5(post_id UNINDEXED, body)',
+];
+
+// Version 8 stores one optional photo per post, outside `posts` so feed
+// queries stay small; the bytes are loaded only when a card is shown.
+const postImageSchema = '''CREATE TABLE post_images (
+  post_id TEXT PRIMARY KEY REFERENCES posts(id) ON DELETE CASCADE,
+  data BLOB NOT NULL CHECK(length(data) BETWEEN 1 AND 2000000),
+  width INTEGER NOT NULL CHECK(width BETWEEN 1 AND 4096),
+  height INTEGER NOT NULL CHECK(height BETWEEN 1 AND 4096))''';

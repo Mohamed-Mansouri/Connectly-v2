@@ -90,7 +90,8 @@ class FeedApi implements FeedRepository {
   }
 
   @override
-  Future<FeedPost> create(String body) async {
+  Future<FeedPost> create(String body, {FeedImageUpload? image}) async {
+    if (image != null) throw _unsupported;
     final data = await _request('POST', '/posts', body: {'body': body.trim()});
     return _parse(
         () => FeedPost.fromJson(data['post'] as Map<String, dynamic>));
@@ -143,6 +144,14 @@ class FeedApi implements FeedRepository {
       throw _unsupported;
   @override
   Future<void> deleteComment(String commentId) async => throw _unsupported;
+  @override
+  Future<Uint8List> postImage(String postId) async => throw _unsupported;
+  @override
+  Future<List<FeedPost>> search(String query) async => throw _unsupported;
+  @override
+  Future<List<FeedTrend>> trendingTags() async => throw _unsupported;
+  @override
+  Future<List<FeedSuggestion>> suggestions(String token) async => const [];
 
   void close() => _client.close();
 }

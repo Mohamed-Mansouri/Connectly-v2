@@ -8,6 +8,7 @@ import '../../discovery/presentation/location_sheet.dart';
 import '../data/profile_repository.dart';
 import '../domain/auth_models.dart';
 import 'auth_scope.dart';
+import '../../../shared/presentation/photo_crop_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({this.repository, this.pickPhoto, super.key});
@@ -126,13 +127,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
         refreshUser: true,
       );
 
+  /// Gallery pick, then crop/rotate; the result is a 512×512 JPEG.
   Future<Uint8List?> _choosePhoto() async {
     final picked = await ImagePicker().pickImage(
         source: ImageSource.gallery,
-        maxWidth: 512,
-        maxHeight: 512,
-        imageQuality: 80);
-    return picked?.readAsBytes();
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 92);
+    if (picked == null || !mounted) return null;
+    final bytes = await picked.readAsBytes();
+    if (!mounted) return null;
+    return Navigator.of(context).push<Uint8List>(MaterialPageRoute(
+        fullscreenDialog: true, builder: (_) => PhotoCropScreen(image: bytes)));
   }
 
   Future<void> _changePhoto() async {

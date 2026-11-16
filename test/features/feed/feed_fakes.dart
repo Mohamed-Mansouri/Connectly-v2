@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:connectly/features/feed/domain/feed_models.dart';
 
 FeedPost testPost(String id, {String? reaction}) => FeedPost(
@@ -26,9 +27,17 @@ class FakeFeedRepository implements FeedRepository {
   @override
   Future<FeedPage> load({required String scope, String? cursor}) async =>
       onLoad == null ? FeedPage(posts, null) : await onLoad!(scope, cursor);
+  FeedImageUpload? lastImage;
+  final images = <String, Uint8List>{};
   @override
-  Future<FeedPost> create(String body) async {
+  Future<Uint8List> postImage(String postId) async =>
+      images[postId] ?? (throw const FeedException('This photo was removed.'));
+
+  @override
+  @override
+  Future<FeedPost> create(String body, {FeedImageUpload? image}) async {
     createCalls++;
+    lastImage = image;
     if (createError != null) throw createError!;
     return pendingCreate?.future ??
         Future.value(FeedPost(
@@ -37,7 +46,9 @@ class FakeFeedRepository implements FeedRepository {
             authorName: 'Test Member',
             body: body,
             createdAt: DateTime.now(),
-            reactions: {}));
+            reactions: {},
+            imageWidth: image?.width,
+            imageHeight: image?.height));
   }
 
   @override
@@ -76,6 +87,23 @@ class FakeFeedRepository implements FeedRepository {
   Future<void> deleteComment(String commentId) async {
     commentList.removeWhere((c) => c.id == commentId);
   }
+
+  final searches = <String>[];
+  List<FeedTrend> trends = const [FeedTrend('travel', 3)];
+  List<FeedSuggestion> suggestionList = const [];
+  @override
+  Future<List<FeedPost>> search(String query) async {
+    searches.add(query);
+    return posts
+        .where((p) => p.body.toLowerCase().contains(query.toLowerCase()))
+        .toList();
+  }
+
+  @override
+  Future<List<FeedTrend>> trendingTags() async => trends;
+  @override
+  Future<List<FeedSuggestion>> suggestions(String token) async =>
+      suggestionList.where((s) => s.value.startsWith(token)).toList();
 
   @override
   Future<List<FeedPerson>> people(

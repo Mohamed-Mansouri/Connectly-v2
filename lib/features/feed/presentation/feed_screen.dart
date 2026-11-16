@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../../app/connectly_theme.dart';
 import '../../../app/app_shell.dart';
 import '../../../app/local_data_scope.dart';
@@ -9,11 +11,15 @@ import '../domain/feed_models.dart';
 import 'create_post_sheet.dart';
 import 'feed_widgets.dart';
 import 'post_card.dart';
+import 'post_search_screen.dart';
 import 'post_sheets.dart';
 
 class FeedScreen extends StatefulWidget {
-  const FeedScreen({this.repository, super.key});
+  const FeedScreen({this.repository, this.pickPostImage, super.key});
   final FeedRepository? repository;
+
+  /// Replaces the system photo picker in the composer (used by tests).
+  final Future<Uint8List?> Function(ImageSource source)? pickPostImage;
   @override
   State<FeedScreen> createState() => _FeedScreenState();
 }
@@ -64,7 +70,9 @@ class _FeedScreenState extends State<FeedScreen> {
         backgroundColor: ConnectlyTheme.navy,
         showDragHandle: false,
         builder: (_) => CreatePostSheet(
-            repository: controller.repository, name: user.name));
+            repository: controller.repository,
+            name: user.name,
+            pickImage: widget.pickPostImage));
     if (mounted && identical(controller, _controller) && post != null) {
       controller.created(post);
     }
@@ -129,6 +137,24 @@ class _FeedScreenState extends State<FeedScreen> {
             repository: controller.repository, post: post, userId: userId));
   }
 
+  /// Opens search; [query] may be a tapped `#tag` or `@handle`.
+  Future<void> _search([String query = '']) async {
+    final controller = _controller;
+    final user = AuthScope.maybeOf(context)?.user;
+    if (controller == null || user == null) return;
+    final at = user.email.indexOf('@');
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => PostSearchScreen(
+            repository: controller.repository,
+            userId: user.id,
+            userHandle: at > 0 ? user.email.substring(0, at).toLowerCase() : '',
+            initialQuery: query)));
+    // Reactions or comments made in search show up in the feed.
+    if (mounted && identical(controller, _controller)) {
+      unawaited(controller.refresh());
+    }
+  }
+
   @override
   void dispose() {
     _controller?.removeListener(_changed);
@@ -148,6 +174,14 @@ class _FeedScreenState extends State<FeedScreen> {
                 fontWeight: FontWeight.w700,
                 fontSize: 27,
                 letterSpacing: -1)),
+        actions: [
+          if (controller != null)
+            IconButton(
+                key: const Key('feed_search'),
+                tooltip: 'Search posts',
+                onPressed: _search,
+                icon: const Icon(Icons.search)),
+        ],
       ),
       body: SafeArea(
           top: false,
@@ -264,6 +298,10 @@ class _FeedScreenState extends State<FeedScreen> {
                               onDelete: () => _delete(post),
                               onComment: () => _comments(post),
                               onShowReactors: () => _reactors(post),
+                              loadImage: () =>
+                                  controller.repository.postImage(post.id),
+                              onTag: (tag) => _search('#$tag'),
+                              onMention: (handle) => _search('@$handle'),
                               onReact: (kind) async =>
                                   _message(await controller.react(post, kind))),
                         if (!controller.loading &&

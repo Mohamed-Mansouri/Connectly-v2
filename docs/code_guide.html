@@ -49,7 +49,7 @@
   <p class="sub" style="text-align:center">Technical Report: Screens, Data Access and Database Model</p>
   <table>
     <tr><td><b>Application</b></td><td>Connectly (Flutter, Android)</td></tr>
-    <tr><td><b>Storage</b></td><td>Local SQLite database, schema version 6</td></tr>
+    <tr><td><b>Storage</b></td><td>Local SQLite database, schema version 8</td></tr>
     <tr><td><b>Date</b></td><td>November 2026</td></tr>
   </table>
 </div>
@@ -99,7 +99,7 @@ final profile = LocalDataScope.of(context).profileFor(userId);</pre>
 <h3>1.3 Storage locations</h3>
 <table>
   <tr><th>Storage</th><th>Content</th></tr>
-  <tr><td>SQLite</td><td>Users, posts, reactions, comments, friendships, conversations, messages, voice clips, profiles, locations, reset codes</td></tr>
+  <tr><td>SQLite</td><td>Users, posts, post photos, reactions, comments, friendships, conversations, messages, voice clips, profiles, locations, reset codes</td></tr>
   <tr><td>Secure storage (Android Keystore)</td><td>Current session token and fingerprint-login tokens</td></tr>
   <tr><td>Hive (see Section 8)</td><td>Remembered login email; unsent chat drafts and pending messages</td></tr>
 </table>
@@ -177,12 +177,15 @@ DELETE FROM password_resets WHERE user_id = ?;</pre>
 
 <h3>4.1 Functions</h3>
 <ul>
-  <li>Create a post (1–3,000 characters) and delete one's own posts.</li>
+  <li>Create a post (1–3,000 characters), optionally with one photo from the gallery or camera, and delete one's own posts.</li>
+  <li>Crop or rotate the photo before publishing; tap a photo in the feed to open it full screen with pinch-to-zoom.</li>
   <li>Filter the feed by Connections, Friends or Following.</li>
   <li>React to a post (Like, Love, Celebrate, Insightful); one reaction per person.</li>
   <li>Tap the reaction counts to see the names of the people who reacted.</li>
   <li>Comment on a post (1–1,000 characters); delete one's own comments or any comment on one's own post.</li>
   <li>Pull down to refresh; load older posts 20 at a time.</li>
+  <li>Write <code>#hashtags</code> and <code>@mentions</code> in posts; both appear highlighted and can be tapped.</li>
+  <li>Search posts by words, hashtags and people, see trending hashtags, and get suggestions while typing (Section 4.4).</li>
 </ul>
 
 <h3>4.2 Layout</h3>
@@ -194,7 +197,14 @@ DELETE FROM password_resets WHERE user_id = ?;</pre>
   <tr><td><code>create_post_sheet.dart</code></td><td>Post composer</td></tr>
   <tr><td><code>post_sheets.dart</code></td><td>Comments sheet and reactions sheet</td></tr>
   <tr><td><code>feed_controller.dart</code></td><td>Post list, paging and loading states</td></tr>
-  <tr><td><code>sqlite_feed_repository.dart</code></td><td>All feed SQL queries</td></tr>
+  <tr><td><code>sqlite_feed_repository.dart</code></td><td>All feed SQL queries, including search</td></tr>
+  <tr><td><code>post_search_screen.dart</code></td><td>Search screen, trending hashtags and results</td></tr>
+  <tr><td><code>post_image_view.dart</code></td><td>Post photo (loaded on demand) and full-screen viewer</td></tr>
+  <tr><td><code>photo_crop_screen.dart</code> (shared)</td><td>Crop/rotate screen used by posts and the profile photo</td></tr>
+  <tr><td><code>post_text_view.dart</code></td><td>Post text with tappable hashtags and mentions</td></tr>
+  <tr><td><code>suggestion_bar.dart</code></td><td>Suggestions for <code>#</code> and <code>@</code> while typing</td></tr>
+  <tr><td><code>post_text.dart</code></td><td>Rules for recognising hashtags, mentions and search queries</td></tr>
+  <tr><td><code>post_index.dart</code></td><td>Saves the hashtags and mentions of each post</td></tr>
 </table>
 <p class="caption">Table 5. Feed files</p>
 
@@ -222,6 +232,48 @@ WHERE r.post_id = ? ORDER BY u.name;</pre>
 FROM post_comments c JOIN users u ON u.id = c.author_id
 WHERE c.post_id = ? ORDER BY c.created_at;</pre>
 <p>Before any action, the repository checks that the post is visible to the user. Deleting a post also deletes its reactions and comments automatically (<code>ON DELETE CASCADE</code>).</p>
+
+<h4>Post photos</h4>
+<p>A photo is resized in a background isolate so that its longest side is at most 1,280 pixels, encoded as JPEG (usually 150–400 KB) and saved in the separate table <code>post_images</code> in the same transaction as the post. The feed query does not read the image bytes; it only joins the photo's width and height, which lets each card reserve the right space before the photo appears:</p>
+<pre>SELECT ..., i.width AS image_width, i.height AS image_height
+FROM posts p JOIN users u ON u.id = p.author_id
+LEFT JOIN post_images i ON i.post_id = p.id
+WHERE ...;</pre>
+<p>When a card becomes visible it requests the bytes. The repository first checks that the post is visible to the user, then keeps the 30 most recent photos in memory so that scrolling back does not read the database again:</p>
+<pre>SELECT data FROM post_images WHERE post_id = ?;</pre>
+<p>Keeping the bytes out of the feed query keeps each page small (Android limits a database cursor window to about 2 MB), and deleting a post removes its photo through <code>ON DELETE CASCADE</code>.</p>
+
+<h3>4.4 Advanced feature: hashtags, mentions and search</h3>
+<h4>Recognising hashtags and mentions</h4>
+<p>A hashtag is <code>#</code> followed by letters, digits or underscores (for example <code>#Ariana</code>); it is stored in lower case so that <code>#Ariana</code> and <code>#ariana</code> are the same tag. A mention is <code>@</code> followed by a person's <i>handle</i>, which is the part of their email before the <code>@</code> (the handle of <code>amal@g.m</code> is <code>amal</code>). Regular expressions detect both; a <code>#</code> or <code>@</code> glued to a previous word (such as an email address written in a post) is ignored.</p>
+<h4>Saving a post</h4>
+<p>When a post is published, the repository inserts the post and, in the same transaction, saves its hashtags in <code>post_tags</code> and the people it mentions in <code>post_mentions</code>. A database trigger copies the text into the full-text index <code>posts_fts</code>.</p>
+<pre>INSERT INTO post_tags (post_id, tag) VALUES (?, 'ariana');
+INSERT OR IGNORE INTO post_mentions (post_id, user_id)
+  SELECT ?, u.id FROM users u
+  WHERE lower(substr(u.email, 1, instr(u.email, '@') - 1)) = 'amal';
+
+CREATE TRIGGER posts_fts_insert AFTER INSERT ON posts BEGIN
+  INSERT INTO posts_fts(post_id, body) VALUES (new.id, new.body);
+END;</pre>
+<h4>Full-text search</h4>
+<p><code>posts_fts</code> is a SQLite FTS4 virtual table. Instead of reading every post, SQLite keeps an inverted index: for each word, the list of posts that contain it. Searching for <code>bea*</code> therefore finds "beach" and "beautiful" quickly. Two more triggers remove or update the index when a post is deleted or changed. If the phone's SQLite has no full-text module, the application falls back to a simple substring search.</p>
+<h4>The search query</h4>
+<p>The text typed in the search box is split into three parts: hashtags, mentions and plain words. For example, <code>#trip @amal beach</code> means "posts tagged trip, by or mentioning Amal, containing a word starting with beach". Each part adds one condition to the same visibility rule used by the feed, so a search never shows posts the user could not see in the feed:</p>
+<pre>SELECT ... FROM posts p JOIN users u ON u.id = p.author_id
+WHERE (p.author_id = :me OR followed(p.author_id) OR friend(p.author_id))
+  AND p.id IN (SELECT post_id FROM post_tags WHERE tag = 'trip')
+  AND (p.author_id IN (SELECT id FROM users WHERE handle = 'amal')
+       OR p.id IN (SELECT post_id FROM post_mentions m ... WHERE handle = 'amal'))
+  AND p.id IN (SELECT post_id FROM posts_fts WHERE posts_fts MATCH 'beach*')
+ORDER BY p.created_at DESC LIMIT 100;</pre>
+<p>Only letters and digits from the plain words are passed to <code>MATCH</code>, so a user cannot inject full-text operators or SQL. The results are then <b>ranked</b> in Dart: each exact word match scores 3 points and each prefix match 1 point; posts with the same score stay newest first. The best 50 are shown, and the matching words are highlighted.</p>
+<h4>Trending hashtags and suggestions</h4>
+<p>When the search box is empty, the screen shows the ten most used hashtags of the last 30 days among visible posts, and a shortcut to the user's own posts and mentions:</p>
+<pre>SELECT t.tag, COUNT(*) AS uses FROM post_tags t JOIN posts p ON p.id = t.post_id
+WHERE p.created_at &gt;= :thirtyDaysAgo AND (visibility rule)
+GROUP BY t.tag ORDER BY uses DESC LIMIT 10;</pre>
+<p>While the user types a word starting with <code>#</code> or <code>@</code>, in the composer or in the search box, a row of suggestions appears (existing hashtags with their number of posts, or people with their name). Tapping a suggestion completes the word. Requests wait 200 ms after the last key press so that the database is not queried on every character.</p>
 
 <!-- 5 -->
 <h2 id="s5" class="break">5. Messaging Screens</h2>
@@ -281,7 +333,7 @@ WHERE conversation_id = ? AND user_id = :me;</pre>
 <h3>6.1 Functions</h3>
 <ul>
   <li>Edit name, email and a short biography (up to 160 characters).</li>
-  <li>Choose or remove a profile photo (resized to 512 × 512 pixels).</li>
+  <li>Choose a profile photo, crop it inside a circle (pinch to zoom, drag to move, rotate), or remove it.</li>
   <li>Set a location on the map and choose whether other accounts can see it.</li>
   <li>Enable or disable fingerprint login.</li>
   <li>Sign out.</li>
@@ -302,10 +354,14 @@ WHERE u.id = :me;</pre>
 INSERT INTO user_profiles (user_id, bio, updated_at) VALUES (:me, ?, now)
 ON CONFLICT(user_id) DO UPDATE SET bio = excluded.bio, updated_at = excluded.updated_at;</pre>
 <p>After saving, the screen calls <code>refreshUser()</code> so that the new name and email appear everywhere in the application.</p>
+<h4>Profile photo</h4>
+<p>The photo is chosen from the gallery and opened in <code>PhotoCropScreen</code> (package <code>crop_your_image</code>). The cropped square is resized to 512 × 512 pixels and saved as JPEG (package <code>image</code>, in a background isolate so the screen does not freeze). The image bytes are stored directly in the database, not as a file path, because the file returned by the gallery picker is temporary:</p>
+<pre>INSERT INTO user_profiles (user_id, photo, updated_at) VALUES (:me, ?, now)
+ON CONFLICT(user_id) DO UPDATE SET photo = excluded.photo, updated_at = excluded.updated_at;</pre>
 
 <!-- 7 -->
 <h2 id="s7" class="break">7. Database Model</h2>
-<p>The database contains fifteen tables. Foreign keys are enabled, and every foreign key uses <code>ON DELETE CASCADE</code>: deleting a user or a post removes all rows that depend on it. Dates are stored as ISO-8601 text in UTC. In the tables below, <b>PK</b> means primary key and <b>FK</b> means foreign key.</p>
+<p>The database contains eighteen tables plus one full-text index (<code>posts_fts</code>). Foreign keys are enabled, and every foreign key uses <code>ON DELETE CASCADE</code>: deleting a user or a post removes all rows that depend on it. Dates are stored as ISO-8601 text in UTC. In the tables below, <b>PK</b> means primary key and <b>FK</b> means foreign key.</p>
 
 <h3>7.1 Relationships</h3>
 <table>
@@ -317,6 +373,9 @@ ON CONFLICT(user_id) DO UPDATE SET bio = excluded.bio, updated_at = excluded.upd
   <tr><td>users ↔ users</td><td>friendships</td><td>Many-to-many (mutual, pending or accepted)</td></tr>
   <tr><td>users ↔ posts</td><td>post_reactions</td><td>Many-to-many, one reaction per user per post</td></tr>
   <tr><td>posts</td><td>post_comments</td><td>One post has many comments</td></tr>
+  <tr><td>posts</td><td>post_images</td><td>One-to-one (optional photo)</td></tr>
+  <tr><td>posts</td><td>post_tags</td><td>One post has many hashtags</td></tr>
+  <tr><td>posts ↔ users</td><td>post_mentions</td><td>Many-to-many (a post mentions many people)</td></tr>
   <tr><td>users ↔ conversations</td><td>conversation_members</td><td>Many-to-many</td></tr>
   <tr><td>conversations</td><td>messages</td><td>One conversation has many messages</td></tr>
   <tr><td>messages</td><td>message_audio</td><td>One-to-one (voice messages only)</td></tr>
@@ -380,6 +439,20 @@ ON CONFLICT(user_id) DO UPDATE SET bio = excluded.bio, updated_at = excluded.upd
   <tr><td class="k">body</td><td>TEXT</td><td></td><td>1 to 1,000 characters</td></tr>
   <tr><td class="k">created_at</td><td>TEXT</td><td></td><td>Date</td></tr>
 
+  <tr><td rowspan="4"><b>post_images</b></td><td class="k">post_id</td><td>TEXT</td><td>PK, FK posts</td><td>Post the photo belongs to</td></tr>
+  <tr><td class="k">data</td><td>BLOB</td><td></td><td>JPEG bytes, up to 2 MB</td></tr>
+  <tr><td class="k">width</td><td>INTEGER</td><td></td><td>Width in pixels</td></tr>
+  <tr><td class="k">height</td><td>INTEGER</td><td></td><td>Height in pixels</td></tr>
+
+  <tr><td rowspan="2"><b>post_tags</b></td><td class="k">post_id</td><td>TEXT</td><td>PK, FK posts</td><td>Tagged post</td></tr>
+  <tr><td class="k">tag</td><td>TEXT</td><td>PK</td><td>Hashtag in lower case, without #</td></tr>
+
+  <tr><td rowspan="2"><b>post_mentions</b></td><td class="k">post_id</td><td>TEXT</td><td>PK, FK posts</td><td>Post</td></tr>
+  <tr><td class="k">user_id</td><td>TEXT</td><td>PK, FK users</td><td>Mentioned person</td></tr>
+
+  <tr><td rowspan="2"><b>posts_fts</b> (virtual)</td><td class="k">post_id</td><td>TEXT</td><td></td><td>Post identifier (not indexed)</td></tr>
+  <tr><td class="k">body</td><td>TEXT</td><td></td><td>Post text, indexed word by word; kept up to date by triggers</td></tr>
+
   <tr><td rowspan="6"><b>conversations</b></td><td class="k">id</td><td>TEXT</td><td>PK</td><td>Unique identifier</td></tr>
   <tr><td class="k">kind</td><td>TEXT</td><td></td><td>'direct' or 'group'</td></tr>
   <tr><td class="k">title</td><td>TEXT</td><td></td><td>Group name (groups only)</td></tr>
@@ -418,6 +491,8 @@ ON CONFLICT(user_id) DO UPDATE SET bio = excluded.bio, updated_at = excluded.upd
   <tr><td>4</td><td>message_audio</td></tr>
   <tr><td>5</td><td>post_comments</td></tr>
   <tr><td>6</td><td>password_resets</td></tr>
+  <tr><td>7</td><td>post_tags, post_mentions, posts_fts and its triggers; existing posts are indexed during the upgrade</td></tr>
+  <tr><td>8</td><td>post_images</td></tr>
 </table>
 <p class="caption">Table 9. Database versions</p>
 

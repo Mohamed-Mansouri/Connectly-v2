@@ -37,3 +37,11 @@ Displayed pages live in memory and reload from SQLite after restart, including o
 Run `flutter test` and `flutter analyze`. `test/local/sqlite_repositories_test.dart` exercises real SQLite feed visibility, friend requests, follows, reactions, ownership, and tied-timestamp pagination. The old HTTP client/backend scripts remain reference code; they are not needed for the local presentation.
 
 Images/uploads, editing posts, persistent drafts/caches, comment replies/editing, notifications, and semantic recommendation ranking remain future work. The advanced demonstration will compare embedding/interaction ranking with the current chronological feed.
+
+## Hashtags, mentions and search
+
+Posts may contain `#tags` (letters, digits, `_`; stored lower case) and `@handles` (the email part before `@`, e.g. `@amal`). `data/post_index.dart` saves them in `post_tags` / `post_mentions` (schema v7) inside the create transaction; triggers copy bodies into the `posts_fts` full-text table (FTS4, or FTS5, or a substring fallback when neither module exists). `PostSearchScreen` (search icon, or tapping a tag/mention) combines `#tag`, `@handle` and word-prefix filters with the normal Connections visibility rule, ranks word matches (exact 3, prefix 1, then newest), highlights them, and shows the top 30-day hashtags when empty. `SuggestionBar` completes `#`/`@` words in the composer and search box.
+
+## Post photos
+
+The composer can attach one photo (gallery or camera, optional crop/rotate via `shared/presentation/photo_crop_screen.dart`). It is resized off the UI thread to at most 1280 px on the longest side (JPEG) and stored in `post_images` (schema v8) in the create transaction. Feed queries only join `width`/`height`; `PostImageView` loads bytes on demand through `postImage(postId)`, which checks visibility and keeps a 30-photo memory cache. Tapping a photo opens a zoomable viewer. A caption is still required because `posts.body` must be 1–3,000 characters.

@@ -62,8 +62,7 @@ void main() {
           isNull);
       expect((await people.load()).ownLocation!.latitude, 36.8533);
 
-      final demoSession =
-          await auth.signIn('nour@g.m', demoPeoplePassword);
+      final demoSession = await auth.signIn('nour@g.m', demoPeoplePassword);
       expect(demoSession.user.id, 'demo-nour');
       expect((await nour.load(filter: 'requests')).people.single.person.id,
           presenter.user.id);
@@ -110,13 +109,9 @@ void main() {
           isFalse);
       expect((await people.load(filter: 'requests')).people.single.person.id,
           'demo-amal');
-      await expectLater(
-          auth.signIn('amal@g.m', 'ConnectlyDemo!2026'),
+      await expectLater(auth.signIn('amal@g.m', 'ConnectlyDemo!2026'),
           throwsA(isA<AuthException>()));
-      expect(
-          (await auth.signIn('amal@g.m', demoPeoplePassword))
-              .user
-              .id,
+      expect((await auth.signIn('amal@g.m', demoPeoplePassword)).user.id,
           'demo-amal');
 
       final updatedHash = (await database.db.query('users',

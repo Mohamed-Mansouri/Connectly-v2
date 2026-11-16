@@ -188,4 +188,61 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('tags open search; trends, typing and suggestions work',
+      (tester) async {
+    final repository = FakeFeedRepository()
+      ..posts = [
+        FeedPost(
+            id: 'tagged',
+            authorId: 'user-2',
+            authorName: 'Amal',
+            body: 'Sunny day at the beach #trip with @member',
+            createdAt: DateTime.utc(2026, 10, 24),
+            reactions: const {})
+      ]
+      ..suggestionList = const [FeedSuggestion('@amal', 'Demo Amal')];
+    await pumpFeed(tester, repository);
+
+    // Tapping a hashtag in a post searches for it.
+    await tester.scrollUntilVisible(find.textContaining('Sunny day'), 200,
+        scrollable: find.byType(Scrollable).first);
+    await tester.tapOnText(find.textRange.ofSubstring('#trip'));
+    await tester.pumpAndSettle();
+    expect(repository.searches, ['#trip']);
+    expect(find.byKey(const Key('search_count')), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    // Empty search shows trends and the mentions shortcut.
+    await tester.tap(find.byKey(const Key('feed_search')));
+    await tester.pumpAndSettle();
+    expect(find.text('#travel · 3'), findsOneWidget);
+    expect(find.text('@member'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('trend_travel')));
+    await tester.pumpAndSettle();
+    expect(repository.searches.last, '#travel');
+    expect(find.text('No posts found'), findsOneWidget);
+
+    // Typing searches after a short pause and highlights words.
+    await tester.enterText(find.byKey(const Key('search_input')), 'beach');
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pumpAndSettle();
+    expect(repository.searches.last, 'beach');
+    expect(find.text('1 post'), findsOneWidget);
+
+    // @ in the search box suggests people and completes the word.
+    await tester.enterText(find.byKey(const Key('search_input')), '@am');
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('suggest_@amal')));
+    await tester.pumpAndSettle();
+    expect(
+        tester
+            .widget<TextField>(find.byKey(const Key('search_input')))
+            .controller!
+            .text,
+        '@amal ');
+    expect(tester.takeException(), isNull);
+  });
 }

@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:path/path.dart' as path;
 import 'package:sqflite/sqflite.dart';
+import '../../features/feed/data/post_index.dart';
 import 'local_schema.dart';
 
 class LocalDatabase {
@@ -14,7 +15,7 @@ class LocalDatabase {
         path.join(await engine.getDatabasesPath(), 'connectly_local.db');
     final db = await engine.openDatabase(filename,
         options: OpenDatabaseOptions(
-          version: 6,
+          version: 8,
           onConfigure: (db) async => db.execute('PRAGMA foreign_keys = ON'),
           onCreate: (db, version) async {
             final batch = db.batch();
@@ -29,6 +30,8 @@ class LocalDatabase {
             }
             batch.execute(passwordResetSchema);
             await batch.commit(noResult: true);
+            await createPostIndexes(db);
+            await db.execute(postImageSchema);
           },
           onUpgrade: (db, oldVersion, newVersion) async {
             if (oldVersion < 2) await db.execute(peopleLocationSchema);
@@ -40,6 +43,8 @@ class LocalDatabase {
               }
             }
             if (oldVersion < 6) await db.execute(passwordResetSchema);
+            if (oldVersion < 7) await createPostIndexes(db);
+            if (oldVersion < 8) await db.execute(postImageSchema);
           },
         ));
     return LocalDatabase(db);

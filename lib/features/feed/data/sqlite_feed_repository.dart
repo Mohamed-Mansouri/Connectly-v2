@@ -1,6 +1,9 @@
+import 'dart:typed_data';
 import 'package:sqflite/sqflite.dart';
 import '../../../shared/data/local_database.dart';
 import '../domain/feed_models.dart';
+import '../domain/post_text.dart';
+import 'post_index.dart';
 
 class SqliteFeedRepository implements FeedRepository {
   SqliteFeedRepository(this.database, this.userId);
@@ -32,8 +35,10 @@ class SqliteFeedRepository implements FeedRepository {
     (SELECT COUNT(*) FROM post_reactions r WHERE r.post_id = p.id AND r.kind = 'love') AS loves,
     (SELECT COUNT(*) FROM post_reactions r WHERE r.post_id = p.id AND r.kind = 'celebrate') AS celebrates,
     (SELECT COUNT(*) FROM post_reactions r WHERE r.post_id = p.id AND r.kind = 'insightful') AS insights,
-    (SELECT COUNT(*) FROM post_comments c WHERE c.post_id = p.id) AS comments
-    FROM posts p JOIN users u ON u.id = p.author_id''';
+    (SELECT COUNT(*) FROM post_comments c WHERE c.post_id = p.id) AS comments,
+    i.width AS image_width, i.height AS image_height
+    FROM posts p JOIN users u ON u.id = p.author_id
+    LEFT JOIN post_images i ON i.post_id = p.id''';
   FeedPost _post(Map<String, Object?> row) => FeedPost(
       id: row['id'] as String,
       authorId: row['author_id'] as String,
@@ -47,7 +52,9 @@ class SqliteFeedRepository implements FeedRepository {
         'insightful': row['insights'] as int
       },
       myReaction: row['my_reaction'] as String?,
-      commentCount: row['comments'] as int);
+      commentCount: row['comments'] as int,
+      imageWidth: row['image_width'] as int?,
+      imageHeight: row['image_height'] as int?);
 
   @override
   Future<FeedPage> load({required String scope, String? cursor}) async {
@@ -87,10 +94,19 @@ class SqliteFeedRepository implements FeedRepository {
   }
 
   @override
-  Future<FeedPost> create(String body) async {
+  Future<FeedPost> create(String body, {FeedImageUpload? image}) async {
     final text = body.trim();
     if (text.isEmpty || text.length > 3000) {
       throw const FeedException('Write a post between 1 and 3,000 characters.');
+    }
+    if (image != null &&
+        (image.bytes.isEmpty ||
+            image.bytes.length > 2000000 ||
+            image.width < 1 ||
+            image.height < 1 ||
+            image.width > 4096 ||
+            image.height > 4096)) {
+      throw const FeedException('Choose a photo smaller than 2 MB.');
     }
     return database.db.transaction((txn) async {
       final id = localId();
@@ -100,12 +116,46 @@ class SqliteFeedRepository implements FeedRepository {
         'body': text,
         'created_at': localTimestamp()
       });
+      if (image != null) {
+        await txn.insert('post_images', {
+          'post_id': id,
+          'data': image.bytes,
+          'width': image.width,
+          'height': image.height
+        });
+        _remember(id, image.bytes);
+      }
+      await indexPostLinks(txn, id, text);
       return _find(txn, id);
     });
   }
 
+  // Recently shown photos, so scrolling back does not re-read the database.
+  final _images = <String, Uint8List>{}; // Keeps insertion order.
+  void _remember(String postId, Uint8List bytes) {
+    _images.remove(postId);
+    _images[postId] = bytes;
+    while (_images.length > 30) {
+      _images.remove(_images.keys.first);
+    }
+  }
+
+  @override
+  Future<Uint8List> postImage(String postId) async {
+    final cached = _images[postId];
+    if (cached != null) return cached;
+    await _find(database.db, postId); // Visibility check.
+    final rows = await database.db.query('post_images',
+        columns: ['data'], where: 'post_id = ?', whereArgs: [postId]);
+    if (rows.isEmpty) throw const FeedException('This photo was removed.');
+    final bytes = rows.single['data'] as Uint8List;
+    _remember(postId, bytes);
+    return bytes;
+  }
+
   @override
   Future<void> delete(String postId) async {
+    _images.remove(postId);
     // Foreign keys cascade reactions and comments; another account cannot delete this row.
     await database.db.delete('posts',
         where: 'id = ? AND author_id = ?', whereArgs: [postId, userId]);
@@ -197,6 +247,116 @@ class SqliteFeedRepository implements FeedRepository {
         '''DELETE FROM post_comments WHERE id = ? AND (author_id = ?
       OR post_id IN (SELECT id FROM posts WHERE author_id = ?))''',
         [commentId, userId, userId]);
+  }
+
+  Future<bool>? _fullText;
+  Future<bool> _hasFullText() async {
+    final rows = await database.db.rawQuery(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'posts_fts'");
+    return rows.isNotEmpty;
+  }
+
+  @override
+  Future<List<FeedPost>> search(String input) async {
+    if (input.length > 200) {
+      throw const FeedException('Search using at most 200 characters.');
+    }
+    final query = PostQuery.parse(input);
+    if (query.isEmpty) return const [];
+    final (clause, visibilityArgs) = _visibility('connections');
+    final where = <String>[clause];
+    final args = <Object?>[userId, ...visibilityArgs];
+    for (final tag in query.tags) {
+      where.add('p.id IN (SELECT post_id FROM post_tags WHERE tag = ?)');
+      args.add(tag);
+    }
+    for (final handle in query.mentions) {
+      // Posts written by that person or mentioning them.
+      where.add(
+          '''(p.author_id IN (SELECT u.id FROM users u WHERE $handleSql = ?)
+        OR p.id IN (SELECT m.post_id FROM post_mentions m JOIN users u ON u.id = m.user_id
+          WHERE $handleSql = ?))''');
+      args.addAll([handle, handle]);
+    }
+    if (query.words.isNotEmpty) {
+      if (await (_fullText ??= _hasFullText())) {
+        // Every word must match the start of a word: "trav" finds "travel".
+        where.add(
+            'p.id IN (SELECT post_id FROM posts_fts WHERE posts_fts MATCH ?)');
+        args.add(query.words.map((w) => '$w*').join(' '));
+      } else {
+        for (final word in query.words) {
+          where.add('instr(lower(p.body), ?) > 0');
+          args.add(word);
+        }
+      }
+    }
+    final rows = await database.db.rawQuery(
+        '$_select WHERE ${where.join(' AND ')} '
+        'ORDER BY p.created_at DESC, p.id DESC LIMIT 100',
+        args);
+    // Rank by how well the words match; on a tie keep newest first.
+    final ranked = [
+      for (final (index, row) in rows.indexed) (post: _post(row), index: index)
+    ]
+        .map((e) =>
+            (post: e.post, index: e.index, score: query.score(e.post.body)))
+        .toList()
+      ..sort((a, b) => a.score != b.score
+          ? b.score.compareTo(a.score)
+          : a.index.compareTo(b.index));
+    return ranked.take(50).map((e) => e.post).toList();
+  }
+
+  @override
+  Future<List<FeedTrend>> trendingTags() async {
+    final (clause, args) = _visibility('connections');
+    final since =
+        localTimestamp(DateTime.now().subtract(const Duration(days: 30)));
+    final rows = await database.db.rawQuery(
+        '''SELECT t.tag, COUNT(*) AS uses FROM post_tags t
+      JOIN posts p ON p.id = t.post_id
+      WHERE p.created_at >= ? AND $clause
+      GROUP BY t.tag ORDER BY uses DESC, MAX(p.created_at) DESC, t.tag LIMIT 10''',
+        [since, ...args]);
+    return rows
+        .map((r) => FeedTrend(r['tag'] as String, r['uses'] as int))
+        .toList();
+  }
+
+  @override
+  Future<List<FeedSuggestion>> suggestions(String token) async {
+    if (token.length > 41) return const [];
+    if (token.startsWith('#')) {
+      final prefix = token.substring(1).toLowerCase();
+      final rows = await database.db
+          .rawQuery('''SELECT tag, COUNT(*) AS uses FROM post_tags
+        WHERE substr(tag, 1, length(?)) = ? GROUP BY tag
+        ORDER BY uses DESC, tag LIMIT 6''', [prefix, prefix]);
+      return rows.map((r) {
+        final uses = r['uses'] as int;
+        return FeedSuggestion(
+            '#${r['tag']}', '$uses post${uses == 1 ? '' : 's'}');
+      }).toList();
+    }
+    if (token.startsWith('@')) {
+      final prefix = token.substring(1).toLowerCase();
+      // Only accepted friends are suggested.
+      final rows = await database.db.rawQuery(
+          '''SELECT $handleSql AS handle, u.name FROM users u
+        JOIN friendships f ON f.status = 'accepted'
+          AND ((f.user_low_id = ? AND f.user_high_id = u.id)
+            OR (f.user_high_id = ? AND f.user_low_id = u.id))
+        WHERE substr($handleSql, 1, length(?)) = ?
+          OR instr(lower(u.name), ?) > 0
+        ORDER BY u.name COLLATE NOCASE LIMIT 6''',
+          [userId, userId, prefix, prefix, prefix]);
+      return rows
+          .where((r) => (r['handle'] as String).isNotEmpty)
+          .map((r) => FeedSuggestion('@${r['handle']}', r['name'] as String))
+          .toList();
+    }
+    return const [];
   }
 
   @override

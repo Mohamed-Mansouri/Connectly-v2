@@ -1,7 +1,10 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../../../app/connectly_theme.dart';
 import '../domain/feed_models.dart';
 import 'feed_widgets.dart';
+import 'post_image_view.dart';
+import 'post_text_view.dart';
 
 class PostCard extends StatelessWidget {
   const PostCard(
@@ -12,14 +15,26 @@ class PostCard extends StatelessWidget {
       required this.onDelete,
       required this.onComment,
       required this.onShowReactors,
+      this.onTag,
+      this.onMention,
+      this.highlight = const [],
+      this.loadImage,
       super.key});
   final FeedPost post;
   final bool isOwn;
   final bool busy;
   final ValueChanged<String?> onReact;
-  final VoidCallback onDelete;
+
+  /// Null hides the delete option.
+  final VoidCallback? onDelete;
   final VoidCallback onComment;
   final VoidCallback onShowReactors;
+  final ValueChanged<String>? onTag;
+  final ValueChanged<String>? onMention;
+  final List<String> highlight;
+
+  /// Loads the photo bytes; required to show [FeedPost.hasImage] photos.
+  final Future<Uint8List> Function()? loadImage;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -49,19 +64,27 @@ class PostCard extends StatelessWidget {
                           style:
                               const TextStyle(color: feedMuted, fontSize: 12))),
                 ])),
-            if (isOwn)
+            if (isOwn && onDelete != null)
               PopupMenuButton<String>(
                   enabled: !busy,
                   tooltip: 'Post options',
-                  onSelected: (_) => onDelete(),
+                  onSelected: (_) => onDelete!(),
                   itemBuilder: (_) => [
                         const PopupMenuItem(
                             value: 'delete', child: Text('Delete post'))
                       ]),
           ]),
           const SizedBox(height: 18),
-          SelectableText(post.body,
-              style: const TextStyle(fontSize: 16, height: 1.55)),
+          PostTextView(post.body,
+              onTag: onTag, onMention: onMention, highlight: highlight),
+          if (post.hasImage && loadImage != null) ...[
+            const SizedBox(height: 14),
+            PostImageView(
+                postId: post.id,
+                width: post.imageWidth!,
+                height: post.imageHeight!,
+                load: loadImage!),
+          ],
           const SizedBox(height: 20),
           if (post.reactionCount > 0 || post.commentCount > 0)
             Padding(
