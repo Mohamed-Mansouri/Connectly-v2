@@ -49,7 +49,9 @@ void main() {
           final other = await repository.signUp(
               'Other Member', 'other@example.test', 'password123');
           final feed = SqliteFeedRepository(database!, auth!.user!.id);
-          await feed.create('SQLite post without HTTP');
+          // The default feed shows people you follow, not your own posts.
+          await SqliteFeedRepository(database!, other.user.id)
+              .create('SQLite post without HTTP');
           await feed.follow(other.user.id, true);
           final chat =
               await SqliteMessagingRepository(database!, auth!.user!.id)

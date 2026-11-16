@@ -8,6 +8,7 @@ import '../data/chat_local_store.dart';
 import '../data/voice_recorder.dart';
 import '../domain/messaging_models.dart';
 import 'chat_widgets.dart';
+import '../../feed/presentation/post_image_view.dart';
 
 class ConversationScreen extends StatefulWidget {
   const ConversationScreen(
@@ -223,11 +224,62 @@ class _ConversationScreenState extends State<ConversationScreen>
             userId: widget.userId));
   }
 
+  /// A feed post sent in this chat: author, text and photo.
+  Widget _sharedPostCard(ChatSharedPost post, int sequence, bool own) {
+    final text = own ? ConnectlyTheme.navy : Colors.white;
+    return Container(
+      key: Key('chat_post_$sequence'),
+      constraints: const BoxConstraints(maxWidth: 260),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+          color: (own ? Colors.white : Colors.black).withValues(alpha: .12),
+          borderRadius: BorderRadius.circular(14)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(Icons.article_outlined, size: 16, color: text),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(post.available ? post.authorName! : 'Post unavailable',
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: text, fontWeight: FontWeight.w700)),
+          ),
+        ]),
+        if (!post.available)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text('This post was deleted.',
+                style: TextStyle(color: text, fontStyle: FontStyle.italic)),
+          ),
+        if (post.available && post.body.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(post.body,
+                maxLines: 6,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: text, height: 1.4)),
+          ),
+        if (post.available && post.hasImage)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: PostImageView(
+                postId: post.postId,
+                heroTag: 'chat_post_image_$sequence',
+                width: post.imageWidth!,
+                height: post.imageHeight!,
+                load: () => widget.repository
+                    .sharedPostImage(widget.conversation.id, sequence)),
+          ),
+      ]),
+    );
+  }
+
   Widget _bubble(String body, bool own, String name, DateTime time,
           {String? status,
           Widget? action,
           int? voiceSequence,
-          int? voiceDurationMs}) =>
+          int? voiceDurationMs,
+          int? sequence,
+          ChatSharedPost? sharedPost}) =>
       Align(
         alignment: own ? Alignment.centerRight : Alignment.centerLeft,
         child: Container(
@@ -252,7 +304,9 @@ class _ConversationScreenState extends State<ConversationScreen>
                             color: ConnectlyTheme.yellow,
                             fontWeight: FontWeight.w700,
                             fontSize: 12))),
-              if (voiceSequence != null)
+              if (sharedPost != null && sequence != null)
+                _sharedPostCard(sharedPost, sequence, own)
+              else if (voiceSequence != null)
                 Row(mainAxisSize: MainAxisSize.min, children: [
                   IconButton(
                     key: Key('voice_play_$voiceSequence'),
@@ -435,7 +489,10 @@ class _ConversationScreenState extends State<ConversationScreen>
                                                     ? message.sequence
                                                     : null,
                                                 voiceDurationMs:
-                                                    message.voiceDurationMs));
+                                                    message.voiceDurationMs,
+                                                sequence: message.sequence,
+                                                sharedPost:
+                                                    message.sharedPost));
                                       })),
                       if (_recording)
                         Padding(

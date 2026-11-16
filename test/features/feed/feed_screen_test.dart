@@ -32,7 +32,9 @@ void main() {
       (tester) async {
     await pumpFeed(tester, FakeFeedRepository());
     expect(find.text('A little update post-1'), findsOneWidget);
-    expect(find.text('Connections'), findsOneWidget);
+    expect(find.text('Me'), findsOneWidget);
+    expect(find.text('Connections'), findsNothing);
+    expect(find.text('Share'), findsOneWidget);
     expect(find.text('Friends'), findsOneWidget);
     expect(find.text('Following'), findsOneWidget);
     expect(find.text('Comment'), findsOneWidget);
@@ -114,7 +116,8 @@ void main() {
         createdAt: DateTime.now(),
         reactions: {}));
     await tester.pumpAndSettle();
-    expect(find.text('My first real post'), findsOneWidget);
+    // The default view hides your own posts and points to "Me".
+    expect(find.text('Posted. You can find it under Me.'), findsOneWidget);
     expect(find.text('Create a post'), findsNothing);
     expect(tester.takeException(), isNull);
   });

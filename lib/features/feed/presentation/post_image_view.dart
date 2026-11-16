@@ -11,8 +11,12 @@ class PostImageView extends StatefulWidget {
       required this.width,
       required this.height,
       required this.load,
+      this.heroTag,
       super.key});
   final String postId;
+
+  /// Must be unique on screen (a post and its repost can both be visible).
+  final String? heroTag;
   final int width;
   final int height;
   final Future<Uint8List> Function() load;
@@ -22,6 +26,7 @@ class PostImageView extends StatefulWidget {
 
 class _PostImageViewState extends State<PostImageView> {
   late Future<Uint8List> _bytes = widget.load();
+  String get _hero => widget.heroTag ?? 'post_image_${widget.postId}';
 
   @override
   void didUpdateWidget(PostImageView old) {
@@ -33,8 +38,8 @@ class _PostImageViewState extends State<PostImageView> {
       Navigator.of(context).push(PageRouteBuilder<void>(
           opaque: false,
           barrierColor: Colors.black,
-          pageBuilder: (_, __, ___) => PostPhotoViewer(
-              bytes: bytes, heroTag: 'post_image_${widget.postId}'),
+          pageBuilder: (_, __, ___) =>
+              PostPhotoViewer(bytes: bytes, heroTag: _hero),
           transitionsBuilder: (_, animation, __, child) =>
               FadeTransition(opacity: animation, child: child)));
 
@@ -74,7 +79,7 @@ class _PostImageViewState extends State<PostImageView> {
                 key: Key('post_image_${widget.postId}'),
                 onTap: () => _open(snapshot.data!),
                 child: Hero(
-                  tag: 'post_image_${widget.postId}',
+                  tag: _hero,
                   child: Image.memory(snapshot.data!,
                       fit: BoxFit.cover,
                       gaplessPlayback: true,

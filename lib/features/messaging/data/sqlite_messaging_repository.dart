@@ -36,9 +36,15 @@ class SqliteMessagingRepository implements MessagingRepository {
     LEFT JOIN users sender ON sender.id = last.sender_id''';
   static const _messageSelect =
       '''SELECT msg.sequence, msg.client_id, msg.sender_id, u.name AS sender_name,
-    msg.body, msg.created_at, audio.duration_ms
+    msg.body, msg.created_at, audio.duration_ms,
+    mp.post_id AS shared_post_id, spu.name AS shared_author, sp.body AS shared_body,
+    spi.width AS shared_image_width, spi.height AS shared_image_height
     FROM messages msg JOIN users u ON u.id = msg.sender_id
-    LEFT JOIN message_audio audio ON audio.message_sequence = msg.sequence''';
+    LEFT JOIN message_audio audio ON audio.message_sequence = msg.sequence
+    LEFT JOIN message_posts mp ON mp.message_sequence = msg.sequence
+    LEFT JOIN posts sp ON sp.id = mp.post_id
+    LEFT JOIN users spu ON spu.id = sp.author_id
+    LEFT JOIN post_images spi ON spi.post_id = sp.id''';
   Conversation _conversation(Map<String, Object?> r) => Conversation(
       id: r['id'] as String,
       kind: r['kind'] as String,
@@ -58,7 +64,15 @@ class SqliteMessagingRepository implements MessagingRepository {
       sender: ChatPerson(r['sender_id'] as String, r['sender_name'] as String),
       body: r['body'] as String,
       createdAt: DateTime.parse(r['created_at'] as String),
-      voiceDurationMs: r['duration_ms'] as int?);
+      voiceDurationMs: r['duration_ms'] as int?,
+      sharedPost: r['shared_post_id'] == null
+          ? null
+          : ChatSharedPost(
+              postId: r['shared_post_id'] as String,
+              authorName: r['shared_author'] as String?,
+              body: r['shared_body'] as String? ?? '',
+              imageWidth: r['shared_image_width'] as int?,
+              imageHeight: r['shared_image_height'] as int?));
   @override
   Future<List<Conversation>> conversations() async {
     final rows = await database.db.rawQuery(
@@ -303,6 +317,58 @@ class SqliteMessagingRepository implements MessagingRepository {
     ''', [conversationId, sequence]);
     if (rows.isEmpty) {
       throw const MessagingException('This voice message is unavailable.');
+    }
+    return rows.single['data'] as Uint8List;
+  }
+
+  @override
+  Future<ChatMessage> sendPost(String conversationId, String postId) async {
+    return database.db.transaction((txn) async {
+      await _ensureMember(txn, conversationId);
+      // Same rule as the feed: your post, a friend's, someone you follow, or
+      // an original shown through such a post's repost.
+      const visible = '''(p.author_id = ?
+        OR EXISTS (SELECT 1 FROM follows f WHERE f.follower_id = ? AND f.followed_id = p.author_id)
+        OR EXISTS (SELECT 1 FROM friendships f WHERE f.status = 'accepted'
+          AND ((f.user_low_id = ? AND f.user_high_id = p.author_id)
+            OR (f.user_high_id = ? AND f.user_low_id = p.author_id))))''';
+      final args = [userId, userId, userId, userId];
+      final rows = await txn.rawQuery('''
+        SELECT u.name FROM posts o JOIN users u ON u.id = o.author_id
+        WHERE o.id = ? AND (
+          EXISTS (SELECT 1 FROM posts p WHERE p.id = o.id AND $visible)
+          OR EXISTS (SELECT 1 FROM posts p WHERE p.shared_post_id = o.id AND $visible))''',
+          [postId, ...args, ...args]);
+      if (rows.isEmpty) {
+        throw const MessagingException('This post is no longer available.');
+      }
+      final author = rows.single['name'] as String;
+      final sequence = await txn.insert('messages', {
+        'conversation_id': conversationId,
+        'sender_id': userId,
+        'client_id': 'post-${localId()}',
+        'body': 'Shared a post by $author',
+        'created_at': localTimestamp()
+      });
+      await txn.insert(
+          'message_posts', {'message_sequence': sequence, 'post_id': postId});
+      return _message((await txn
+              .rawQuery('$_messageSelect WHERE msg.sequence = ?', [sequence]))
+          .single);
+    });
+  }
+
+  @override
+  Future<Uint8List> sharedPostImage(String conversationId, int sequence) async {
+    await _ensureMember(database.db, conversationId);
+    final rows = await database.db.rawQuery('''
+      SELECT i.data FROM message_posts mp
+      JOIN messages msg ON msg.sequence = mp.message_sequence
+      JOIN post_images i ON i.post_id = mp.post_id
+      WHERE msg.conversation_id = ? AND msg.sequence = ?''',
+        [conversationId, sequence]);
+    if (rows.isEmpty) {
+      throw const MessagingException('This photo is unavailable.');
     }
     return rows.single['data'] as Uint8List;
   }

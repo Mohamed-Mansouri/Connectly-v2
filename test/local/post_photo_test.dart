@@ -114,7 +114,7 @@ void main() {
     await tester.pumpAndSettle();
     await addPhoto();
     expect(find.byKey(const Key('post_photo_preview')), findsOneWidget);
-    expect(find.text('Write a caption…'), findsOneWidget);
+    expect(find.text('Write a caption (optional)…'), findsOneWidget);
     await tester.ensureVisible(find.byKey(const Key('post_remove_photo')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('post_remove_photo')));
@@ -131,7 +131,21 @@ void main() {
     expect((repository.lastImage!.width, repository.lastImage!.height),
         (1280, 720));
 
-    // The new card reserves space for the photo while it loads.
+    // Own posts live under "Me"; the card reserves space for the photo.
+    expect(find.text('Posted. You can find it under Me.'), findsOneWidget);
+    repository.posts = [
+      FeedPost(
+          id: 'new-post',
+          authorId: 'user-1',
+          authorName: 'Test Member',
+          body: 'Beach day',
+          createdAt: DateTime.now(),
+          reactions: const {},
+          imageWidth: 1280,
+          imageHeight: 720)
+    ];
+    await tester.tap(find.byKey(const Key('filter_me')));
+    await tester.pumpAndSettle();
     expect(find.byKey(const Key('post_image_new-post')), findsNothing);
     expect(find.text('Beach day'), findsOneWidget);
     expect(find.byType(AspectRatio), findsOneWidget);

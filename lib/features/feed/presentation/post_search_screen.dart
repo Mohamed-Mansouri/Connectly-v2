@@ -217,7 +217,7 @@ class _PostSearchScreenState extends State<PostSearchScreen> {
             onComment: () => _comments(post),
             onShowReactors: () => _reactors(post),
             onReact: (kind) => _react(post, kind),
-            loadImage: () => widget.repository.postImage(post.id),
+            loadImage: widget.repository.postImage,
             onTag: (tag) => _searchFor('#$tag'),
             onMention: (handle) => _searchFor('@$handle'),
             highlight: words,

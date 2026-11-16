@@ -155,6 +155,16 @@ class MessagingApi implements MessagingRepository {
           'Voice messages are available in local chats only.');
 
   @override
+  Future<ChatMessage> sendPost(String conversationId, String postId) =>
+      throw const MessagingException(
+          'Sharing posts is available in local chats only.');
+
+  @override
+  Future<Uint8List> sharedPostImage(String conversationId, int sequence) =>
+      throw const MessagingException(
+          'Sharing posts is available in local chats only.');
+
+  @override
   Future<void> markRead(String conversationId, int throughSequence) async {
     await _request('POST', '${_path(conversationId)}/read',
         body: {'throughSequence': throughSequence});

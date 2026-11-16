@@ -7,16 +7,22 @@ import '../../../app/app_shell.dart';
 import '../../../app/local_data_scope.dart';
 import '../../auth/presentation/auth_scope.dart';
 import '../application/feed_controller.dart';
+import '../../messaging/domain/messaging_models.dart';
 import '../domain/feed_models.dart';
 import 'create_post_sheet.dart';
 import 'feed_widgets.dart';
 import 'post_card.dart';
 import 'post_search_screen.dart';
 import 'post_sheets.dart';
+import 'share_sheets.dart';
 
 class FeedScreen extends StatefulWidget {
-  const FeedScreen({this.repository, this.pickPostImage, super.key});
+  const FeedScreen(
+      {this.repository, this.messaging, this.pickPostImage, super.key});
   final FeedRepository? repository;
+
+  /// Used by "Send to a friend"; defaults to the local database.
+  final MessagingRepository? messaging;
 
   /// Replaces the system photo picker in the composer (used by tests).
   final Future<Uint8List?> Function(ImageSource source)? pickPostImage;
@@ -74,8 +80,55 @@ class _FeedScreenState extends State<FeedScreen> {
             name: user.name,
             pickImage: widget.pickPostImage));
     if (mounted && identical(controller, _controller) && post != null) {
-      controller.created(post);
+      _published(controller, post, 'Posted.');
     }
+  }
+
+  /// The default view hides your own posts, so a new post or repost is
+  /// shown in place only under "Me"; otherwise a snackbar points there.
+  void _published(FeedController controller, FeedPost post, String text) {
+    if (controller.scope == 'me') {
+      controller.created(post);
+      return;
+    }
+    unawaited(controller.refresh()); // Updates share counts.
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('$text You can find it under Me.'),
+        action: SnackBarAction(
+            label: 'View',
+            onPressed: () {
+              if (identical(controller, _controller)) {
+                unawaited(controller.refresh(filter: 'me'));
+              }
+            })));
+  }
+
+  Future<void> _share(FeedPost post, String action) async {
+    final controller = _controller;
+    final userId = _userId;
+    if (controller == null || userId == null) return;
+    if (action == 'repost') {
+      final repost = await showModalBottomSheet<FeedPost>(
+          context: context,
+          isScrollControlled: true,
+          showDragHandle: true,
+          backgroundColor: ConnectlyTheme.navy,
+          builder: (_) =>
+              RepostSheet(repository: controller.repository, post: post));
+      if (mounted && identical(controller, _controller) && repost != null) {
+        _published(controller, repost, 'Reposted.');
+      }
+      return;
+    }
+    final messaging =
+        widget.messaging ?? LocalDataScope.of(context).messagingFor(userId);
+    final friend = await showModalBottomSheet<String>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        backgroundColor: ConnectlyTheme.navy,
+        builder: (_) => SendToFriendSheet(messaging: messaging, post: post));
+    if (friend != null) _message('Sent to $friend in Chats.');
   }
 
   void _message(String? message) {
@@ -240,9 +293,11 @@ class _FeedScreenState extends State<FeedScreen> {
                                   ])),
                             )),
                         const SizedBox(height: 20),
+                        // No chip selected = everyone but you. Tapping the
+                        // selected chip again returns to that view.
                         Wrap(spacing: 8, runSpacing: 8, children: [
                           for (final filter in const {
-                            'connections': 'Connections',
+                            'me': 'Me',
                             'friends': 'Friends',
                             'following': 'Following'
                           }.entries)
@@ -250,8 +305,8 @@ class _FeedScreenState extends State<FeedScreen> {
                                 key: Key('filter_${filter.key}'),
                                 label: Text(filter.value),
                                 selected: controller.scope == filter.key,
-                                onSelected: (_) =>
-                                    controller.refresh(filter: filter.key)),
+                                onSelected: (selected) => controller.refresh(
+                                    filter: selected ? filter.key : 'all')),
                         ]),
                         const SizedBox(height: 20),
                         if (controller.loading)
@@ -280,15 +335,25 @@ class _FeedScreenState extends State<FeedScreen> {
                         if (!controller.loading &&
                             controller.error == null &&
                             controller.posts.isEmpty)
-                          FeedNotice(
-                              icon: Icons.waving_hand_outlined,
-                              title: 'A fresh start for your feed',
-                              message:
-                                  'Share your first post or find people to connect with. Your posts always appear alongside this filter.',
-                              action: OutlinedButton.icon(
-                                  onPressed: () => AppTabScope.people(context),
-                                  icon: const Icon(Icons.person_add_alt),
-                                  label: const Text('Find people'))),
+                          controller.scope == 'me'
+                              ? FeedNotice(
+                                  icon: Icons.edit_note_rounded,
+                                  title: 'You have not posted yet',
+                                  message:
+                                      'Your posts and reposts appear here.',
+                                  action: FilledButton(
+                                      onPressed: _compose,
+                                      child: const Text('Write a post')))
+                              : FeedNotice(
+                                  icon: Icons.waving_hand_outlined,
+                                  title: 'A fresh start for your feed',
+                                  message:
+                                      'Posts from your friends and the people you follow appear here. Your own posts are under Me.',
+                                  action: OutlinedButton.icon(
+                                      onPressed: () =>
+                                          AppTabScope.people(context),
+                                      icon: const Icon(Icons.person_add_alt),
+                                      label: const Text('Find people'))),
                         for (final post in controller.posts)
                           PostCard(
                               key: ValueKey(post.id),
@@ -298,8 +363,8 @@ class _FeedScreenState extends State<FeedScreen> {
                               onDelete: () => _delete(post),
                               onComment: () => _comments(post),
                               onShowReactors: () => _reactors(post),
-                              loadImage: () =>
-                                  controller.repository.postImage(post.id),
+                              loadImage: controller.repository.postImage,
+                              onShare: (action) => _share(post, action),
                               onTag: (tag) => _search('#$tag'),
                               onMention: (handle) => _search('@$handle'),
                               onReact: (kind) async =>

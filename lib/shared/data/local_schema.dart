@@ -127,3 +127,29 @@ const postImageSchema = '''CREATE TABLE post_images (
   data BLOB NOT NULL CHECK(length(data) BETWEEN 1 AND 2000000),
   width INTEGER NOT NULL CHECK(width BETWEEN 1 AND 4096),
   height INTEGER NOT NULL CHECK(height BETWEEN 1 AND 4096))''';
+
+// Version 9 rebuilds `posts` (SQLite cannot change a CHECK in place):
+// * `shared_post_id` marks a repost; no foreign key, so a repost survives the
+//   original's deletion and shows "no longer available";
+// * the body may be empty for a repost without comment or a photo-only post
+//   (the repository still requires text, a photo or a shared post).
+const postsV9Schema = [
+  '''CREATE TABLE posts_v9 (
+  id TEXT PRIMARY KEY,
+  author_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body TEXT NOT NULL CHECK(length(body) <= 3000),
+  created_at TEXT NOT NULL,
+  shared_post_id TEXT)''',
+  '''INSERT INTO posts_v9 (id, author_id, body, created_at)
+  SELECT id, author_id, body, created_at FROM posts''',
+  'DROP TABLE posts',
+  'ALTER TABLE posts_v9 RENAME TO posts',
+  'CREATE INDEX posts_author_time ON posts(author_id, created_at DESC, id DESC)',
+  'CREATE INDEX posts_time ON posts(created_at DESC, id DESC)',
+  'CREATE INDEX posts_shared ON posts(shared_post_id)',
+];
+
+// Version 9: a chat message can carry a post sent to a friend.
+const messagePostSchema = '''CREATE TABLE message_posts (
+  message_sequence INTEGER PRIMARY KEY REFERENCES messages(sequence) ON DELETE CASCADE,
+  post_id TEXT NOT NULL)''';

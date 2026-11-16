@@ -15,8 +15,12 @@ class LocalDatabase {
         path.join(await engine.getDatabasesPath(), 'connectly_local.db');
     final db = await engine.openDatabase(filename,
         options: OpenDatabaseOptions(
-          version: 8,
-          onConfigure: (db) async => db.execute('PRAGMA foreign_keys = ON'),
+          version: 9,
+          // Foreign keys stay off while tables are created or rebuilt
+          // (dropping the old `posts` must not cascade) and are switched on
+          // in onOpen, after the upgrade transaction has committed.
+          onConfigure: (db) async => db.execute('PRAGMA foreign_keys = OFF'),
+          onOpen: (db) async => db.execute('PRAGMA foreign_keys = ON'),
           onCreate: (db, version) async {
             final batch = db.batch();
             for (final sql in localSchema) {
@@ -32,6 +36,8 @@ class LocalDatabase {
             await batch.commit(noResult: true);
             await createPostIndexes(db);
             await db.execute(postImageSchema);
+            await rebuildPostsForSharing(db);
+            await db.execute(messagePostSchema);
           },
           onUpgrade: (db, oldVersion, newVersion) async {
             if (oldVersion < 2) await db.execute(peopleLocationSchema);
@@ -45,6 +51,10 @@ class LocalDatabase {
             if (oldVersion < 6) await db.execute(passwordResetSchema);
             if (oldVersion < 7) await createPostIndexes(db);
             if (oldVersion < 8) await db.execute(postImageSchema);
+            if (oldVersion < 9) {
+              await rebuildPostsForSharing(db);
+              await db.execute(messagePostSchema);
+            }
           },
         ));
     return LocalDatabase(db);

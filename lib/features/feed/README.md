@@ -45,3 +45,7 @@ Posts may contain `#tags` (letters, digits, `_`; stored lower case) and `@handle
 ## Post photos
 
 The composer can attach one photo (gallery or camera, optional crop/rotate via `shared/presentation/photo_crop_screen.dart`). It is resized off the UI thread to at most 1280 px on the longest side (JPEG) and stored in `post_images` (schema v8) in the create transaction. Feed queries only join `width`/`height`; `PostImageView` loads bytes on demand through `postImage(postId)`, which checks visibility and keeps a 30-photo memory cache. Tapping a photo opens a zoomable viewer. A caption is still required because `posts.body` must be 1–3,000 characters.
+
+## Filters and sharing
+
+Chips are Me / Friends / Following; with none selected the scope is `all` (friends and followed people, never yourself). Tapping the selected chip returns to `all`; new posts show a snackbar pointing to Me. Share offers **Repost** (`repost(postId, comment)`: a `posts` row with `shared_post_id`, always the root original, comment optional) and **Send to a friend** (`MessagingRepository.sendPost`, stored in `message_posts`, drawn as a card in the chat). Schema v9 rebuilds `posts` with foreign keys off (enabled again in `onOpen`) so the body can be empty for photo-only posts and reposts.

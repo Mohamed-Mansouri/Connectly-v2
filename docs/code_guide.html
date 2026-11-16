@@ -49,7 +49,7 @@
   <p class="sub" style="text-align:center">Technical Report: Screens, Data Access and Database Model</p>
   <table>
     <tr><td><b>Application</b></td><td>Connectly (Flutter, Android)</td></tr>
-    <tr><td><b>Storage</b></td><td>Local SQLite database, schema version 8</td></tr>
+    <tr><td><b>Storage</b></td><td>Local SQLite database, schema version 9</td></tr>
     <tr><td><b>Date</b></td><td>November 2026</td></tr>
   </table>
 </div>
@@ -173,13 +173,14 @@ DELETE FROM password_resets WHERE user_id = ?;</pre>
 
 <!-- 4 -->
 <h2 id="s4" class="break">4. Feed Screen</h2>
-<p>Folder: <code>lib/features/feed/</code>. The feed shows posts written by the user and by the people the user follows or is friends with, newest first.</p>
+<p>Folder: <code>lib/features/feed/</code>. The feed shows, newest first, the posts of the user's friends and of the people the user follows. The user's own posts are kept under the "Me" filter.</p>
 
 <h3>4.1 Functions</h3>
 <ul>
-  <li>Create a post (1–3,000 characters), optionally with one photo from the gallery or camera, and delete one's own posts.</li>
+  <li>Create a post (up to 3,000 characters) with text, one photo from the gallery or camera, or both, and delete one's own posts.</li>
   <li>Crop or rotate the photo before publishing; tap a photo in the feed to open it full screen with pinch-to-zoom.</li>
-  <li>Filter the feed by Connections, Friends or Following.</li>
+  <li>Filter the feed with three chips: <b>Me</b> (own posts and reposts), <b>Friends</b> and <b>Following</b>. With no chip selected the feed shows everyone except the user; tapping the selected chip again returns to that view.</li>
+  <li>Share a post: <b>Repost to my feed</b> (with an optional comment; the original appears inside the repost) or <b>Send to a friend</b> (the post is sent as a message in the direct chat).</li>
   <li>React to a post (Like, Love, Celebrate, Insightful); one reaction per person.</li>
   <li>Tap the reaction counts to see the names of the people who reacted.</li>
   <li>Comment on a post (1–1,000 characters); delete one's own comments or any comment on one's own post.</li>
@@ -196,6 +197,7 @@ DELETE FROM password_resets WHERE user_id = ?;</pre>
   <tr><td><code>post_card.dart</code></td><td>Display of one post</td></tr>
   <tr><td><code>create_post_sheet.dart</code></td><td>Post composer</td></tr>
   <tr><td><code>post_sheets.dart</code></td><td>Comments sheet and reactions sheet</td></tr>
+  <tr><td><code>share_sheets.dart</code></td><td>Repost sheet and "Send to a friend" sheet</td></tr>
   <tr><td><code>feed_controller.dart</code></td><td>Post list, paging and loading states</td></tr>
   <tr><td><code>sqlite_feed_repository.dart</code></td><td>All feed SQL queries, including search</td></tr>
   <tr><td><code>post_search_screen.dart</code></td><td>Search screen, trending hashtags and results</td></tr>
@@ -210,7 +212,7 @@ DELETE FROM password_resets WHERE user_id = ?;</pre>
 
 <h3>4.3 Data access</h3>
 <h4>Loading posts</h4>
-<p>One query returns the posts together with their reaction counts, the current user's reaction and the number of comments. The <code>WHERE</code> clause changes with the chosen filter. Twenty-one rows are requested; if the twenty-first exists, a "Load more posts" button is shown.</p>
+<p>One query returns the posts together with their reaction counts, the current user's reaction, the number of comments and shares, the photo size and, for a repost, the original post (author, text and photo size) through <code>LEFT JOIN posts o ON o.id = p.shared_post_id</code>. The <code>WHERE</code> clause changes with the chosen filter (Table 5a). Twenty-one rows are requested; if the twenty-first exists, a "Load more posts" button is shown.</p>
 <pre>SELECT p.id, p.author_id, u.name AS author_name, p.body, p.created_at,
   (SELECT kind FROM post_reactions r WHERE r.post_id = p.id AND r.user_id = :me) AS my_reaction,
   (SELECT COUNT(*) FROM post_reactions r WHERE r.post_id = p.id AND r.kind = 'like') AS likes,
@@ -220,6 +222,14 @@ FROM posts p JOIN users u ON u.id = p.author_id
 WHERE (p.author_id = :me OR followed(p.author_id) OR friend(p.author_id))
 ORDER BY p.created_at DESC, p.id DESC
 LIMIT 21;</pre>
+<table>
+  <tr><th>Filter</th><th>Condition on the author of the post</th></tr>
+  <tr><td>(none)</td><td>Not the user, and a friend or followed</td></tr>
+  <tr><td>Me</td><td>The user</td></tr>
+  <tr><td>Friends</td><td>Not the user, and an accepted friend</td></tr>
+  <tr><td>Following</td><td>Not the user, and followed by the user</td></tr>
+</table>
+<p class="caption">Table 5a. Feed filters</p>
 <h4>Reacting</h4>
 <pre>INSERT INTO post_reactions (post_id, user_id, kind) VALUES (?, :me, ?)
 ON CONFLICT(post_id, user_id) DO UPDATE SET kind = excluded.kind;</pre>
@@ -242,6 +252,20 @@ WHERE ...;</pre>
 <p>When a card becomes visible it requests the bytes. The repository first checks that the post is visible to the user, then keeps the 30 most recent photos in memory so that scrolling back does not read the database again:</p>
 <pre>SELECT data FROM post_images WHERE post_id = ?;</pre>
 <p>Keeping the bytes out of the feed query keeps each page small (Android limits a database cursor window to about 2 MB), and deleting a post removes its photo through <code>ON DELETE CASCADE</code>.</p>
+
+<h4>Sharing: reposts</h4>
+<p>A repost is an ordinary row of <code>posts</code> whose <code>shared_post_id</code> points to the original; its <code>body</code> holds the optional comment. It can therefore be reacted to and commented on like any post. Reposting a repost shares its original instead, so chains never form:</p>
+<pre>INSERT INTO posts (id, author_id, body, created_at, shared_post_id)
+VALUES (?, :me, :comment, now, :originalId);</pre>
+<p><code>shared_post_id</code> has no foreign key on purpose: when the original is deleted, the repost remains and displays "This post is no longer available". A repost lets the friends of the reposter see the original even if they are not connected to its author, so the photo check accepts a post that is visible directly <i>or</i> through a visible repost:</p>
+<pre>SELECT 1 FROM posts p WHERE p.id = ? AND (visibility rule)
+UNION ALL
+SELECT 1 FROM posts p WHERE p.shared_post_id = ? AND (visibility rule) LIMIT 1;</pre>
+<h4>Sharing: sending to a friend</h4>
+<p>The sheet lists the user's accepted friends. Choosing one opens (or reuses) the direct conversation and inserts a message whose text, "Shared a post by …", is what the chat list shows as a preview. The link to the post is stored in <code>message_posts</code>. The chat screen joins this table to draw a small card with the author, the text and the photo; a deleted post is shown as unavailable.</p>
+<pre>INSERT INTO messages (conversation_id, sender_id, client_id, body, created_at)
+VALUES (?, :me, ?, 'Shared a post by Sami', now);
+INSERT INTO message_posts (message_sequence, post_id) VALUES (?, ?);</pre>
 
 <h3>4.4 Advanced feature: hashtags, mentions and search</h3>
 <h4>Recognising hashtags and mentions</h4>
@@ -361,7 +385,7 @@ ON CONFLICT(user_id) DO UPDATE SET photo = excluded.photo, updated_at = excluded
 
 <!-- 7 -->
 <h2 id="s7" class="break">7. Database Model</h2>
-<p>The database contains eighteen tables plus one full-text index (<code>posts_fts</code>). Foreign keys are enabled, and every foreign key uses <code>ON DELETE CASCADE</code>: deleting a user or a post removes all rows that depend on it. Dates are stored as ISO-8601 text in UTC. In the tables below, <b>PK</b> means primary key and <b>FK</b> means foreign key.</p>
+<p>The database contains nineteen tables plus one full-text index (<code>posts_fts</code>). Foreign keys are enabled, and every foreign key uses <code>ON DELETE CASCADE</code>: deleting a user or a post removes all rows that depend on it. Dates are stored as ISO-8601 text in UTC. In the tables below, <b>PK</b> means primary key and <b>FK</b> means foreign key.</p>
 
 <h3>7.1 Relationships</h3>
 <table>
@@ -374,6 +398,8 @@ ON CONFLICT(user_id) DO UPDATE SET photo = excluded.photo, updated_at = excluded
   <tr><td>users ↔ posts</td><td>post_reactions</td><td>Many-to-many, one reaction per user per post</td></tr>
   <tr><td>posts</td><td>post_comments</td><td>One post has many comments</td></tr>
   <tr><td>posts</td><td>post_images</td><td>One-to-one (optional photo)</td></tr>
+  <tr><td>posts</td><td>posts (shared_post_id)</td><td>One post has many reposts</td></tr>
+  <tr><td>messages</td><td>message_posts</td><td>One-to-one (a message can carry a post)</td></tr>
   <tr><td>posts</td><td>post_tags</td><td>One post has many hashtags</td></tr>
   <tr><td>posts ↔ users</td><td>post_mentions</td><td>Many-to-many (a post mentions many people)</td></tr>
   <tr><td>users ↔ conversations</td><td>conversation_members</td><td>Many-to-many</td></tr>
@@ -424,10 +450,11 @@ ON CONFLICT(user_id) DO UPDATE SET photo = excluded.photo, updated_at = excluded
   <tr><td class="k">status</td><td>TEXT</td><td></td><td>'pending' or 'accepted'</td></tr>
   <tr><td class="k">created_at</td><td>TEXT</td><td></td><td>Date</td></tr>
 
-  <tr><td rowspan="4"><b>posts</b></td><td class="k">id</td><td>TEXT</td><td>PK</td><td>Unique identifier</td></tr>
+  <tr><td rowspan="5"><b>posts</b></td><td class="k">id</td><td>TEXT</td><td>PK</td><td>Unique identifier</td></tr>
   <tr><td class="k">author_id</td><td>TEXT</td><td>FK users</td><td>Author</td></tr>
-  <tr><td class="k">body</td><td>TEXT</td><td></td><td>1 to 3,000 characters</td></tr>
+  <tr><td class="k">body</td><td>TEXT</td><td></td><td>Up to 3,000 characters (may be empty for a photo or a repost)</td></tr>
   <tr><td class="k">created_at</td><td>TEXT</td><td></td><td>Publication date</td></tr>
+  <tr><td class="k">shared_post_id</td><td>TEXT</td><td></td><td>Original post, for a repost (no foreign key)</td></tr>
 
   <tr><td rowspan="3"><b>post_reactions</b></td><td class="k">post_id</td><td>TEXT</td><td>PK, FK posts</td><td>Post</td></tr>
   <tr><td class="k">user_id</td><td>TEXT</td><td>PK, FK users</td><td>User who reacted</td></tr>
@@ -443,6 +470,9 @@ ON CONFLICT(user_id) DO UPDATE SET photo = excluded.photo, updated_at = excluded
   <tr><td class="k">data</td><td>BLOB</td><td></td><td>JPEG bytes, up to 2 MB</td></tr>
   <tr><td class="k">width</td><td>INTEGER</td><td></td><td>Width in pixels</td></tr>
   <tr><td class="k">height</td><td>INTEGER</td><td></td><td>Height in pixels</td></tr>
+
+  <tr><td rowspan="2"><b>message_posts</b></td><td class="k">message_sequence</td><td>INTEGER</td><td>PK, FK messages</td><td>Message carrying the post</td></tr>
+  <tr><td class="k">post_id</td><td>TEXT</td><td></td><td>Shared post (no foreign key)</td></tr>
 
   <tr><td rowspan="2"><b>post_tags</b></td><td class="k">post_id</td><td>TEXT</td><td>PK, FK posts</td><td>Tagged post</td></tr>
   <tr><td class="k">tag</td><td>TEXT</td><td>PK</td><td>Hashtag in lower case, without #</td></tr>
@@ -493,6 +523,7 @@ ON CONFLICT(user_id) DO UPDATE SET photo = excluded.photo, updated_at = excluded
   <tr><td>6</td><td>password_resets</td></tr>
   <tr><td>7</td><td>post_tags, post_mentions, posts_fts and its triggers; existing posts are indexed during the upgrade</td></tr>
   <tr><td>8</td><td>post_images</td></tr>
+  <tr><td>9</td><td><code>posts</code> rebuilt with <code>shared_post_id</code> and an optional body (copied row by row with foreign keys off, then indexes and full-text triggers recreated); message_posts</td></tr>
 </table>
 <p class="caption">Table 9. Database versions</p>
 

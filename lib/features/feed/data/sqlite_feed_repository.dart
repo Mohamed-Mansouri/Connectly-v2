@@ -15,18 +15,26 @@ class SqliteFeedRepository implements FeedRepository {
       OR (f.user_high_id = ? AND f.user_low_id = p.author_id)))''';
   static const _following =
       'EXISTS (SELECT 1 FROM follows f WHERE f.follower_id = ? AND f.followed_id = p.author_id)';
+
+  /// SQL condition (on alias `p`) and arguments for a feed scope.
+  /// `connections` (you + friends + followed) is the visibility rule used for
+  /// search and for every action on a post.
   (String, List<Object?>) _visibility(String scope) => switch (scope) {
         'connections' => (
             '(p.author_id = ? OR $_following OR $_friends)',
             [userId, userId, userId, userId]
           ),
+        'all' => (
+            '(p.author_id <> ? AND ($_following OR $_friends))',
+            [userId, userId, userId, userId]
+          ),
+        'me' => ('p.author_id = ?', [userId]),
         'friends' => (
-            '(p.author_id = ? OR $_friends)',
+            '(p.author_id <> ? AND $_friends)',
             [userId, userId, userId]
           ),
-        'following' => ('(p.author_id = ? OR $_following)', [userId, userId]),
-        _ => throw const FeedException(
-            'Choose Connections, Friends, or Following.'),
+        'following' => ('(p.author_id <> ? AND $_following)', [userId, userId]),
+        _ => throw const FeedException('Choose Me, Friends, or Following.'),
       };
   static const _select =
       '''SELECT p.id, p.author_id, u.name AS author_name, p.body, p.created_at,
@@ -36,9 +44,16 @@ class SqliteFeedRepository implements FeedRepository {
     (SELECT COUNT(*) FROM post_reactions r WHERE r.post_id = p.id AND r.kind = 'celebrate') AS celebrates,
     (SELECT COUNT(*) FROM post_reactions r WHERE r.post_id = p.id AND r.kind = 'insightful') AS insights,
     (SELECT COUNT(*) FROM post_comments c WHERE c.post_id = p.id) AS comments,
-    i.width AS image_width, i.height AS image_height
+    (SELECT COUNT(*) FROM posts s WHERE s.shared_post_id = p.id) AS shares,
+    i.width AS image_width, i.height AS image_height, p.shared_post_id,
+    o.id AS o_id, o.author_id AS o_author_id, ou.name AS o_author_name,
+    o.body AS o_body, o.created_at AS o_created_at,
+    oi.width AS o_image_width, oi.height AS o_image_height
     FROM posts p JOIN users u ON u.id = p.author_id
-    LEFT JOIN post_images i ON i.post_id = p.id''';
+    LEFT JOIN post_images i ON i.post_id = p.id
+    LEFT JOIN posts o ON o.id = p.shared_post_id
+    LEFT JOIN users ou ON ou.id = o.author_id
+    LEFT JOIN post_images oi ON oi.post_id = o.id''';
   FeedPost _post(Map<String, Object?> row) => FeedPost(
       id: row['id'] as String,
       authorId: row['author_id'] as String,
@@ -54,7 +69,19 @@ class SqliteFeedRepository implements FeedRepository {
       myReaction: row['my_reaction'] as String?,
       commentCount: row['comments'] as int,
       imageWidth: row['image_width'] as int?,
-      imageHeight: row['image_height'] as int?);
+      imageHeight: row['image_height'] as int?,
+      sharedPostId: row['shared_post_id'] as String?,
+      shareCount: row['shares'] as int,
+      shared: row['o_id'] == null
+          ? null
+          : FeedSharedPost(
+              id: row['o_id'] as String,
+              authorId: row['o_author_id'] as String,
+              authorName: row['o_author_name'] as String,
+              body: row['o_body'] as String,
+              createdAt: DateTime.parse(row['o_created_at'] as String),
+              imageWidth: row['o_image_width'] as int?,
+              imageHeight: row['o_image_height'] as int?));
 
   @override
   Future<FeedPage> load({required String scope, String? cursor}) async {
@@ -96,8 +123,11 @@ class SqliteFeedRepository implements FeedRepository {
   @override
   Future<FeedPost> create(String body, {FeedImageUpload? image}) async {
     final text = body.trim();
-    if (text.isEmpty || text.length > 3000) {
-      throw const FeedException('Write a post between 1 and 3,000 characters.');
+    if (text.length > 3000) {
+      throw const FeedException('Keep your post under 3,000 characters.');
+    }
+    if (text.isEmpty && image == null) {
+      throw const FeedException('Write something or add a photo.');
     }
     if (image != null &&
         (image.bytes.isEmpty ||
@@ -144,13 +174,65 @@ class SqliteFeedRepository implements FeedRepository {
   Future<Uint8List> postImage(String postId) async {
     final cached = _images[postId];
     if (cached != null) return cached;
-    await _find(database.db, postId); // Visibility check.
+    if (!await _canSee(database.db, postId)) {
+      throw const FeedException(
+          'This post is no longer available in your feed.');
+    }
     final rows = await database.db.query('post_images',
         columns: ['data'], where: 'post_id = ?', whereArgs: [postId]);
     if (rows.isEmpty) throw const FeedException('This photo was removed.');
     final bytes = rows.single['data'] as Uint8List;
     _remember(postId, bytes);
     return bytes;
+  }
+
+  /// A post is visible if it is in your connections, or if a post in your
+  /// connections reposts it (so a repost can show a stranger's original).
+  Future<bool> _canSee(DatabaseExecutor db, String postId) async {
+    final (clause, args) = _visibility('connections');
+    final rows = await db.rawQuery(
+        '''SELECT 1 FROM posts p WHERE p.id = ? AND $clause
+      UNION ALL
+      SELECT 1 FROM posts p WHERE p.shared_post_id = ? AND $clause LIMIT 1''',
+        [postId, ...args, postId, ...args]);
+    return rows.isNotEmpty;
+  }
+
+  @override
+  Future<FeedPost> repost(String postId, String comment) async {
+    final text = comment.trim();
+    if (text.length > 3000) {
+      throw const FeedException('Keep your comment under 3,000 characters.');
+    }
+    return database.db.transaction((txn) async {
+      if (!await _canSee(txn, postId)) {
+        throw const FeedException(
+            'This post is no longer available in your feed.');
+      }
+      // Reposting a repost shares its original instead.
+      final target = await txn.query('posts',
+          columns: ['id', 'shared_post_id'],
+          where: 'id = ?',
+          whereArgs: [postId]);
+      final rootId = target.isEmpty
+          ? postId
+          : (target.single['shared_post_id'] as String?) ?? postId;
+      final root = await txn.query('posts',
+          columns: ['id'], where: 'id = ?', whereArgs: [rootId]);
+      if (root.isEmpty) {
+        throw const FeedException('This post can no longer be shared.');
+      }
+      final id = localId();
+      await txn.insert('posts', {
+        'id': id,
+        'author_id': userId,
+        'body': text,
+        'created_at': localTimestamp(),
+        'shared_post_id': rootId
+      });
+      await indexPostLinks(txn, id, text);
+      return _find(txn, id);
+    });
   }
 
   @override

@@ -53,7 +53,8 @@ class ChatMessage {
       required this.sender,
       required this.body,
       required this.createdAt,
-      this.voiceDurationMs});
+      this.voiceDurationMs,
+      this.sharedPost});
   final int sequence;
   final String clientId;
   final ChatPerson sender;
@@ -61,6 +62,9 @@ class ChatMessage {
   final DateTime createdAt;
   final int? voiceDurationMs;
   bool get isVoice => voiceDurationMs != null;
+
+  /// A feed post sent in this message, if any.
+  final ChatSharedPost? sharedPost;
   factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
       sequence: json['sequence'] as int,
       clientId: json['clientId'] as String,
@@ -68,6 +72,24 @@ class ChatMessage {
       body: json['body'] as String,
       createdAt: DateTime.parse(json['createdAt'] as String),
       voiceDurationMs: json['voiceDurationMs'] as int?);
+}
+
+/// Preview of a feed post sent in a chat. [authorName] is null when the
+/// post has been deleted since it was sent.
+class ChatSharedPost {
+  const ChatSharedPost(
+      {required this.postId,
+      this.authorName,
+      this.body = '',
+      this.imageWidth,
+      this.imageHeight});
+  final String postId;
+  final String? authorName;
+  final String body;
+  final int? imageWidth;
+  final int? imageHeight;
+  bool get available => authorName != null;
+  bool get hasImage => imageWidth != null && imageHeight != null;
 }
 
 class MessagePage {
@@ -96,5 +118,11 @@ abstract class MessagingRepository {
   Future<ChatMessage> sendVoice(
       String conversationId, String clientId, Uint8List bytes, int durationMs);
   Future<Uint8List> voiceBytes(String conversationId, int sequence);
+
+  /// Sends a feed post you can see into a conversation you belong to.
+  Future<ChatMessage> sendPost(String conversationId, String postId);
+
+  /// Photo of the post shared in message [sequence].
+  Future<Uint8List> sharedPostImage(String conversationId, int sequence);
   Future<void> markRead(String conversationId, int throughSequence);
 }

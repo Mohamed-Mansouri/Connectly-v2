@@ -6,7 +6,9 @@ class FeedController extends ChangeNotifier {
   final FeedRepository repository;
   List<FeedPost> _posts = [];
   List<FeedPost> get posts => List.unmodifiable(_posts);
-  String scope = 'connections';
+
+  /// `all` (everyone but you), `me`, `friends` or `following`.
+  String scope = 'all';
   String? nextCursor;
   String? error;
   bool loading = false;

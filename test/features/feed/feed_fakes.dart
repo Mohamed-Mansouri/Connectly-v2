@@ -33,7 +33,27 @@ class FakeFeedRepository implements FeedRepository {
   Future<Uint8List> postImage(String postId) async =>
       images[postId] ?? (throw const FeedException('This photo was removed.'));
 
+  final reposts = <String>[];
   @override
+  Future<FeedPost> repost(String postId, String comment) async {
+    reposts.add('$postId:$comment');
+    final original = posts.firstWhere((p) => p.id == postId);
+    return FeedPost(
+        id: 'repost-${reposts.length}',
+        authorId: 'user-1',
+        authorName: 'Test Member',
+        body: comment.trim(),
+        createdAt: DateTime.now(),
+        reactions: const {},
+        sharedPostId: original.id,
+        shared: FeedSharedPost(
+            id: original.id,
+            authorId: original.authorId,
+            authorName: original.authorName,
+            body: original.body,
+            createdAt: original.createdAt));
+  }
+
   @override
   Future<FeedPost> create(String body, {FeedImageUpload? image}) async {
     createCalls++;

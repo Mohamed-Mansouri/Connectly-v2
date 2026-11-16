@@ -11,7 +11,10 @@ class FeedPost {
       this.myReaction,
       this.commentCount = 0,
       this.imageWidth,
-      this.imageHeight});
+      this.imageHeight,
+      this.sharedPostId,
+      this.shared,
+      this.shareCount = 0});
 
   final String id;
   final String authorId;
@@ -26,6 +29,15 @@ class FeedPost {
   final int? imageWidth;
   final int? imageHeight;
   bool get hasImage => imageWidth != null && imageHeight != null;
+
+  /// Set when this post is a repost; [shared] is null if the original was
+  /// deleted since.
+  final String? sharedPostId;
+  final FeedSharedPost? shared;
+  bool get isRepost => sharedPostId != null;
+
+  /// Number of reposts of this post.
+  final int shareCount;
   int get reactionCount =>
       reactions.values.fold(0, (sum, count) => sum + count);
 
@@ -39,7 +51,10 @@ class FeedPost {
       myReaction: myReaction,
       commentCount: commentCount ?? this.commentCount,
       imageWidth: imageWidth,
-      imageHeight: imageHeight);
+      imageHeight: imageHeight,
+      sharedPostId: sharedPostId,
+      shared: shared,
+      shareCount: shareCount);
 
   factory FeedPost.fromJson(Map<String, dynamic> json) {
     final author = json['author'] as Map<String, dynamic>;
@@ -53,6 +68,26 @@ class FeedPost {
         myReaction: json['myReaction'] as String?,
         commentCount: json['commentCount'] as int? ?? 0);
   }
+}
+
+/// The original post shown inside a repost.
+class FeedSharedPost {
+  const FeedSharedPost(
+      {required this.id,
+      required this.authorId,
+      required this.authorName,
+      required this.body,
+      required this.createdAt,
+      this.imageWidth,
+      this.imageHeight});
+  final String id;
+  final String authorId;
+  final String authorName;
+  final String body;
+  final DateTime createdAt;
+  final int? imageWidth;
+  final int? imageHeight;
+  bool get hasImage => imageWidth != null && imageHeight != null;
 }
 
 /// A photo chosen in the composer, already resized to JPEG.
@@ -135,8 +170,14 @@ class FeedException implements Exception {
 }
 
 abstract class FeedRepository {
+  /// [scope] is `all` (friends and followed people, not you), `me`,
+  /// `friends` or `following`.
   Future<FeedPage> load({required String scope, String? cursor});
   Future<FeedPost> create(String body, {FeedImageUpload? image});
+
+  /// Shares [postId] (or, for a repost, its original) to your followers and
+  /// friends with an optional [comment].
+  Future<FeedPost> repost(String postId, String comment);
 
   /// JPEG bytes of a visible post's photo.
   Future<Uint8List> postImage(String postId);

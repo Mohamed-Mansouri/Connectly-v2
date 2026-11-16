@@ -110,6 +110,17 @@ class FakeMessagingRepository implements MessagingRepository {
   Future<Uint8List> voiceBytes(String conversationId, int sequence) async =>
       voiceClips[sequence]!;
 
+  final sentPosts = <String>[];
+  @override
+  Future<ChatMessage> sendPost(String conversationId, String postId) async {
+    sentPosts.add('$conversationId:$postId');
+    throw const MessagingException('Not used by this fake.');
+  }
+
+  @override
+  Future<Uint8List> sharedPostImage(String conversationId, int sequence) =>
+      throw const MessagingException('Not used by this fake.');
+
   @override
   Future<void> markRead(String conversationId, int throughSequence) async {
     readMarkers.add(throughSequence);

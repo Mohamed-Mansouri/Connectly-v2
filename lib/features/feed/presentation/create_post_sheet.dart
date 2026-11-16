@@ -138,7 +138,8 @@ class _CreatePostSheetState extends State<CreatePostSheet> {
 
   Future<void> _publish() async {
     final body = _text.text.trim();
-    if (_busy || _preparing || body.isEmpty || body.length > 3000) return;
+    if (_busy || _preparing || body.length > 3000) return;
+    if (body.isEmpty && _photo == null) return;
     final photo = _photo;
     setState(() {
       _busy = true;
@@ -223,7 +224,7 @@ class _CreatePostSheetState extends State<CreatePostSheet> {
                     decoration: InputDecoration(
                         hintText: _photo == null
                             ? "What's on your mind?"
-                            : 'Write a caption…',
+                            : 'Write a caption (optional)…',
                         border: InputBorder.none),
                     style: const TextStyle(fontSize: 17, height: 1.5)),
                 SuggestionBar(controller: _text, repository: widget.repository),
@@ -257,10 +258,11 @@ class _CreatePostSheetState extends State<CreatePostSheet> {
                     width: double.infinity,
                     child: FilledButton.icon(
                       key: const Key('publish_post'),
-                      onPressed:
-                          _busy || _preparing || _text.text.trim().isEmpty
-                              ? null
-                              : _publish,
+                      onPressed: _busy ||
+                              _preparing ||
+                              (_text.text.trim().isEmpty && _photo == null)
+                          ? null
+                          : _publish,
                       style: FilledButton.styleFrom(
                           backgroundColor: ConnectlyTheme.yellow,
                           foregroundColor: Colors.black,

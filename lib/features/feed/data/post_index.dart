@@ -37,6 +37,26 @@ Future<void> createPostIndexes(DatabaseExecutor db) async {
   }
 }
 
+/// Version 9: rebuilds `posts` with `shared_post_id` and a relaxed body
+/// CHECK, keeping every row. Must run with foreign keys off. Dropping the old
+/// table also drops its full-text triggers, so they are created again.
+Future<void> rebuildPostsForSharing(DatabaseExecutor db) async {
+  for (final sql in postsV9Schema) {
+    await db.execute(sql);
+  }
+  final fullText = await db.rawQuery(
+      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'posts_fts'");
+  if (fullText.isNotEmpty) {
+    for (final trigger in postSearchTriggers) {
+      await db.execute(trigger);
+    }
+  }
+  final broken = await db.rawQuery('PRAGMA foreign_key_check');
+  if (broken.isNotEmpty) {
+    throw StateError('Post upgrade left ${broken.length} broken references.');
+  }
+}
+
 /// Creates the first full-text engine this SQLite supports (see
 /// [postSearchTable]); returns false when none is available.
 Future<bool> _createFullText(DatabaseExecutor db) async {
