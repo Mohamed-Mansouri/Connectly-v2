@@ -106,6 +106,36 @@ void main() {
         asSami.repost(orphan.id, ''), throwsA(isA<FeedException>()));
   });
 
+  test('comment replies are one level deep and deleted with the comment',
+      () async {
+    final post = await asAmal.create('Weekend plans?');
+    final other = await asAmal.create('Another post');
+    final top = await asSami.addComment(post.id, 'Beach!');
+    final reply = await asAmal.addComment(post.id, 'Yes!', replyTo: top.id);
+    expect(reply.parentId, top.id);
+    // Replying to a reply stays under the same top-level comment.
+    final nested =
+        await asSami.addComment(post.id, 'At 10?', replyTo: reply.id);
+    expect(nested.parentId, top.id);
+    // A reply must target a comment of the same post.
+    await expectLater(
+        asAmal.addComment(other.id, 'Wrong post', replyTo: top.id),
+        throwsA(isA<FeedException>()));
+
+    final all = await asAmal.comments(post.id);
+    expect(all.map((c) => c.parentId), [null, top.id, top.id]);
+    expect(
+        (await asAmal.load(scope: 'me'))
+            .posts
+            .firstWhere((p) => p.id == post.id)
+            .commentCount,
+        3);
+
+    // Deleting the top-level comment removes its replies too.
+    await asSami.deleteComment(top.id);
+    expect(await asAmal.comments(post.id), isEmpty);
+  });
+
   test('a post sent to a friend appears in the chat with its photo', () async {
     final original = await asSami.create('Concert tonight', image: photo());
     final evesPost = await asEve.create('Eve only');
@@ -172,7 +202,7 @@ void main() {
       final upgraded = await LocalDatabase.open(
           factory: databaseFactoryFfi, databasePath: filename);
       try {
-        expect(await upgraded.db.getVersion(), 9);
+        expect(await upgraded.db.getVersion(), 10);
         expect(
             (await upgraded.db.rawQuery('PRAGMA foreign_keys')).single.values,
             [1]);
@@ -228,17 +258,24 @@ void main() {
                 repository: SqliteFeedRepository(database, amal.id),
                 messaging: SqliteMessagingRepository(database, amal.id)))));
     await settle();
-    // Default view: everyone but me.
+    // Default view: "All" is selected, which is everyone but me.
+    expect(
+        tester.widget<ChoiceChip>(find.byKey(const Key('filter_all'))).selected,
+        isTrue);
     expect(find.text('Sami at the beach'), findsOneWidget);
     expect(find.text('Amal own post'), findsNothing);
     await tester.tap(find.byKey(const Key('filter_me')));
     await settle();
     expect(find.text('Amal own post'), findsOneWidget);
     expect(find.text('Sami at the beach'), findsNothing);
-    // Tapping the selected chip again returns to the default view.
-    await tester.tap(find.byKey(const Key('filter_me')));
+    // "All" groups friends and followed people, still without me.
+    await tester.tap(find.byKey(const Key('filter_all')));
     await settle();
     expect(find.text('Sami at the beach'), findsOneWidget);
+    expect(find.text('Amal own post'), findsNothing);
+    expect(
+        tester.widget<ChoiceChip>(find.byKey(const Key('filter_all'))).selected,
+        isTrue);
 
     // Repost with a comment.
     await tester.ensureVisible(find.byKey(Key('share_${original.id}')));
@@ -258,7 +295,7 @@ void main() {
     expect(find.text('reposted'), findsOneWidget);
 
     // Send to a friend.
-    await tester.tap(find.byKey(const Key('filter_me')));
+    await tester.tap(find.byKey(const Key('filter_all')));
     await settle();
     await tester.ensureVisible(find.byKey(Key('share_${original.id}')));
     await tester.tap(find.byKey(Key('share_${original.id}')));

@@ -153,3 +153,10 @@ const postsV9Schema = [
 const messagePostSchema = '''CREATE TABLE message_posts (
   message_sequence INTEGER PRIMARY KEY REFERENCES messages(sequence) ON DELETE CASCADE,
   post_id TEXT NOT NULL)''';
+
+// Version 10: replies to comments, one level deep. `parent_id` always points
+// to a top-level comment; deleting it deletes its replies.
+const commentReplySchema = [
+  'ALTER TABLE post_comments ADD COLUMN parent_id TEXT REFERENCES post_comments(id) ON DELETE CASCADE',
+  'CREATE INDEX post_comments_parent ON post_comments(parent_id)',
+];

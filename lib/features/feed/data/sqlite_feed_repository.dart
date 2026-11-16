@@ -281,7 +281,8 @@ class SqliteFeedRepository implements FeedRepository {
   }
 
   static const _commentSelect =
-      '''SELECT c.id, c.post_id, c.author_id, u.name AS author_name, c.body, c.created_at
+      '''SELECT c.id, c.post_id, c.author_id, u.name AS author_name, c.body,
+    c.created_at, c.parent_id
     FROM post_comments c JOIN users u ON u.id = c.author_id''';
   FeedComment _comment(Map<String, Object?> row) => FeedComment(
       id: row['id'] as String,
@@ -289,7 +290,8 @@ class SqliteFeedRepository implements FeedRepository {
       authorId: row['author_id'] as String,
       authorName: row['author_name'] as String,
       body: row['body'] as String,
-      createdAt: DateTime.parse(row['created_at'] as String));
+      createdAt: DateTime.parse(row['created_at'] as String),
+      parentId: row['parent_id'] as String?);
 
   @override
   Future<List<FeedComment>> comments(String postId) async {
@@ -301,7 +303,8 @@ class SqliteFeedRepository implements FeedRepository {
   }
 
   @override
-  Future<FeedComment> addComment(String postId, String body) async {
+  Future<FeedComment> addComment(String postId, String body,
+      {String? replyTo}) async {
     final text = body.trim();
     if (text.isEmpty || text.length > 1000) {
       throw const FeedException(
@@ -309,13 +312,27 @@ class SqliteFeedRepository implements FeedRepository {
     }
     return database.db.transaction((txn) async {
       await _find(txn, postId);
+      String? parentId;
+      if (replyTo != null) {
+        final target = await txn.query('post_comments',
+            columns: ['id', 'parent_id'],
+            where: 'id = ? AND post_id = ?',
+            whereArgs: [replyTo, postId]);
+        if (target.isEmpty) {
+          throw const FeedException('This comment was deleted.');
+        }
+        // One level only: a reply to a reply joins the same thread.
+        parentId = (target.single['parent_id'] as String?) ??
+            target.single['id'] as String;
+      }
       final id = localId();
       await txn.insert('post_comments', {
         'id': id,
         'post_id': postId,
         'author_id': userId,
         'body': text,
-        'created_at': localTimestamp()
+        'created_at': localTimestamp(),
+        'parent_id': parentId
       });
       final rows = await txn.rawQuery('$_commentSelect WHERE c.id = ?', [id]);
       return _comment(rows.single);

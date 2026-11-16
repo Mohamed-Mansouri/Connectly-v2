@@ -148,7 +148,7 @@ void main() {
         final upgraded = await LocalDatabase.open(
             factory: databaseFactoryFfi, databasePath: filename);
         try {
-          expect(await upgraded.db.getVersion(), 9);
+          expect(await upgraded.db.getVersion(), 10);
           final repo = SqliteFeedRepository(upgraded, 'u1');
           expect((await repo.search('#tunis')).single.id, 'p1');
           expect((await repo.search('old')).single.id, 'p1');

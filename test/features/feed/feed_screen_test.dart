@@ -35,6 +35,13 @@ void main() {
     expect(find.text('Me'), findsOneWidget);
     expect(find.text('Connections'), findsNothing);
     expect(find.text('Share'), findsOneWidget);
+    // React, Comment and Share share one line.
+    final react = tester.getCenter(find.byKey(const Key('react_post-1')));
+    final comment = tester.getCenter(find.byKey(const Key('comment_post-1')));
+    final share = tester.getCenter(find.byKey(const Key('share_post-1')));
+    expect(comment.dy, react.dy);
+    expect(share.dy, react.dy);
+    expect(react.dx < comment.dx && comment.dx < share.dx, isTrue);
     expect(find.text('Friends'), findsOneWidget);
     expect(find.text('Following'), findsOneWidget);
     expect(find.text('Comment'), findsOneWidget);
@@ -246,6 +253,44 @@ void main() {
             .controller!
             .text,
         '@amal ');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('replying to a comment nests the reply under it', (tester) async {
+    final repository = FakeFeedRepository();
+    repository.commentList.add(FeedComment(
+        id: 'c1',
+        postId: 'post-1',
+        authorId: 'user-2',
+        authorName: 'Amal',
+        body: 'First!',
+        createdAt: DateTime.utc(2026, 11, 1)));
+    await pumpFeed(tester, repository);
+    await tester.tap(find.byKey(const Key('comment_post-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('reply_c1')));
+    await tester.pumpAndSettle();
+    expect(find.text('Replying to Amal'), findsOneWidget);
+    expect(find.text('Write a reply…'), findsOneWidget);
+    await tester.enterText(find.byKey(const Key('comment_input')), 'Hi Amal');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('comment_send')));
+    await tester.pumpAndSettle();
+    expect(repository.commentList.last.parentId, 'c1');
+    expect(find.byKey(const Key('replying_to')), findsNothing);
+    expect(find.text('Hi Amal'), findsOneWidget);
+    // The reply is indented below the comment it answers.
+    final top = tester.getTopLeft(find.text('First!'));
+    final reply = tester.getTopLeft(find.text('Hi Amal'));
+    expect(reply.dy, greaterThan(top.dy));
+    expect(reply.dx, greaterThan(top.dx));
+
+    // Cancelling a reply goes back to a normal comment.
+    await tester.tap(find.byKey(const Key('reply_c1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('reply_cancel')));
+    await tester.pumpAndSettle();
+    expect(find.text('Write a comment…'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

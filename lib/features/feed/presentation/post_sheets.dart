@@ -130,7 +130,31 @@ class CommentsSheet extends StatefulWidget {
 class _CommentsSheetState extends State<CommentsSheet> {
   final _text = TextEditingController();
   final _scroll = ScrollController();
+  final _focus = FocusNode();
   List<FeedComment>? _comments;
+
+  /// The comment being answered (shown above the input), if any.
+  FeedComment? _replyTo;
+
+  /// Top-level comments in time order, each followed by its replies.
+  List<FeedComment> _threaded(List<FeedComment> all) {
+    final replies = <String, List<FeedComment>>{};
+    for (final c in all.where((c) => c.isReply)) {
+      (replies[c.parentId!] ??= []).add(c);
+    }
+    return [
+      for (final top in all.where((c) => !c.isReply)) ...[
+        top,
+        ...?replies[top.id],
+      ]
+    ];
+  }
+
+  void _startReply(FeedComment comment) {
+    setState(() => _replyTo = comment);
+    _focus.requestFocus();
+  }
+
   String? _error;
   bool _sending = false;
   final Set<String> _deleting = {};
@@ -161,11 +185,18 @@ class _CommentsSheetState extends State<CommentsSheet> {
       _error = null;
     });
     try {
-      final comment = await widget.repository.addComment(widget.post.id, body);
+      final reply = _replyTo;
+      final comment = await widget.repository
+          .addComment(widget.post.id, body, replyTo: reply?.id);
       if (!mounted) return;
       _text.clear();
-      setState(() => _comments = [...?_comments, comment]);
+      setState(() {
+        _comments = [...?_comments, comment];
+        _replyTo = null;
+      });
       widget.onCountChanged(_comments!.length);
+      // A new top-level comment is last; a reply stays where it was written.
+      if (reply != null) return;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scroll.hasClients) {
           _scroll.animateTo(_scroll.position.maxScrollExtent,
@@ -186,8 +217,15 @@ class _CommentsSheetState extends State<CommentsSheet> {
     try {
       await widget.repository.deleteComment(comment.id);
       if (!mounted) return;
-      setState(() =>
-          _comments = _comments!.where((c) => c.id != comment.id).toList());
+      // Replies are deleted with their comment (ON DELETE CASCADE).
+      setState(() {
+        _comments = _comments!
+            .where((c) => c.id != comment.id && c.parentId != comment.id)
+            .toList();
+        if (_replyTo?.id == comment.id || _replyTo?.parentId == comment.id) {
+          _replyTo = null;
+        }
+      });
       widget.onCountChanged(_comments!.length);
     } catch (error) {
       if (mounted) setState(() => _error = FeedController.message(error));
@@ -201,6 +239,7 @@ class _CommentsSheetState extends State<CommentsSheet> {
   void dispose() {
     _text.dispose();
     _scroll.dispose();
+    _focus.dispose();
     super.dispose();
   }
 
@@ -208,9 +247,14 @@ class _CommentsSheetState extends State<CommentsSheet> {
     final mine = c.authorId == widget.userId;
     return Padding(
       key: ValueKey(c.id),
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      // Replies are indented under their comment.
+      padding: EdgeInsets.only(left: c.isReply ? 46 : 0, top: 6, bottom: 2),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        FeedAvatar(c.authorName),
+        c.isReply
+            ? SizedBox.square(
+                dimension: 30,
+                child: FittedBox(child: FeedAvatar(c.authorName)))
+            : FeedAvatar(c.authorName),
         const SizedBox(width: 10),
         Expanded(
           child: Container(
@@ -230,6 +274,20 @@ class _CommentsSheetState extends State<CommentsSheet> {
               ]),
               const SizedBox(height: 4),
               SelectableText(c.body, style: const TextStyle(height: 1.45)),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  key: Key('reply_${c.id}'),
+                  onPressed: () => _startReply(c),
+                  style: TextButton.styleFrom(
+                      foregroundColor: feedMuted,
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      minimumSize: const Size(0, 32),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                  child: const Text('Reply',
+                      style: TextStyle(fontWeight: FontWeight.w600)),
+                ),
+              ),
             ]),
           ),
         ),
@@ -252,6 +310,8 @@ class _CommentsSheetState extends State<CommentsSheet> {
   @override
   Widget build(BuildContext context) {
     final comments = _comments;
+    final ordered =
+        comments == null ? const <FeedComment>[] : _threaded(comments);
     final canModerate = widget.post.authorId == widget.userId;
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
@@ -289,13 +349,36 @@ class _CommentsSheetState extends State<CommentsSheet> {
                           padding: const EdgeInsets.symmetric(horizontal: 16),
                           itemCount: comments.length,
                           itemBuilder: (context, i) =>
-                              _commentTile(comments[i], canModerate)),
+                              _commentTile(ordered[i], canModerate)),
             ),
             if (_error != null)
               Padding(
                   padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
                   child: Text(_error!,
                       style: const TextStyle(color: feedMuted, fontSize: 13))),
+            if (_replyTo != null)
+              Container(
+                key: const Key('replying_to'),
+                margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                padding: const EdgeInsets.only(left: 12),
+                decoration: BoxDecoration(
+                    color: ConnectlyTheme.surface,
+                    borderRadius: BorderRadius.circular(12)),
+                child: Row(children: [
+                  const Icon(Icons.reply_rounded, size: 18, color: feedMuted),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text('Replying to ${_replyTo!.authorName}',
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: feedMuted)),
+                  ),
+                  IconButton(
+                      key: const Key('reply_cancel'),
+                      tooltip: 'Cancel reply',
+                      onPressed: () => setState(() => _replyTo = null),
+                      icon: const Icon(Icons.close, size: 18)),
+                ]),
+              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
               child: Row(children: [
@@ -303,13 +386,17 @@ class _CommentsSheetState extends State<CommentsSheet> {
                   child: TextField(
                     key: const Key('comment_input'),
                     controller: _text,
+                    focusNode: _focus,
                     minLines: 1,
                     maxLines: 4,
                     maxLength: 1000,
                     textCapitalization: TextCapitalization.sentences,
                     onChanged: (_) => setState(() {}),
-                    decoration: const InputDecoration(
-                        hintText: 'Write a comment…', counterText: ''),
+                    decoration: InputDecoration(
+                        hintText: _replyTo == null
+                            ? 'Write a comment…'
+                            : 'Write a reply…',
+                        counterText: ''),
                   ),
                 ),
                 const SizedBox(width: 4),

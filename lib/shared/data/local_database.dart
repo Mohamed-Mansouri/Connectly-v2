@@ -15,7 +15,7 @@ class LocalDatabase {
         path.join(await engine.getDatabasesPath(), 'connectly_local.db');
     final db = await engine.openDatabase(filename,
         options: OpenDatabaseOptions(
-          version: 9,
+          version: 10,
           // Foreign keys stay off while tables are created or rebuilt
           // (dropping the old `posts` must not cascade) and are switched on
           // in onOpen, after the upgrade transaction has committed.
@@ -38,6 +38,9 @@ class LocalDatabase {
             await db.execute(postImageSchema);
             await rebuildPostsForSharing(db);
             await db.execute(messagePostSchema);
+            for (final sql in commentReplySchema) {
+              await db.execute(sql);
+            }
           },
           onUpgrade: (db, oldVersion, newVersion) async {
             if (oldVersion < 2) await db.execute(peopleLocationSchema);
@@ -54,6 +57,11 @@ class LocalDatabase {
             if (oldVersion < 9) {
               await rebuildPostsForSharing(db);
               await db.execute(messagePostSchema);
+            }
+            if (oldVersion < 10) {
+              for (final sql in commentReplySchema) {
+                await db.execute(sql);
+              }
             }
           },
         ));

@@ -106,13 +106,18 @@ class FeedComment {
       required this.authorId,
       required this.authorName,
       required this.body,
-      required this.createdAt});
+      required this.createdAt,
+      this.parentId});
   final String id;
   final String postId;
   final String authorId;
   final String authorName;
   final String body;
   final DateTime createdAt;
+
+  /// The top-level comment this replies to; null for a top-level comment.
+  final String? parentId;
+  bool get isReply => parentId != null;
 }
 
 class FeedReactor {
@@ -185,7 +190,12 @@ abstract class FeedRepository {
   Future<FeedPost> react(String postId, String? kind);
   Future<List<FeedReactor>> reactors(String postId);
   Future<List<FeedComment>> comments(String postId);
-  Future<FeedComment> addComment(String postId, String body);
+
+  /// Adds a comment, or a reply when [replyTo] is set. Replying to a reply
+  /// attaches to the same top-level comment (one level of nesting).
+  Future<FeedComment> addComment(String postId, String body, {String? replyTo});
+
+  /// Deletes a comment and, for a top-level comment, its replies.
   Future<void> deleteComment(String commentId);
 
   /// Posts visible to the viewer that match `#tags`, `@handles` and words.

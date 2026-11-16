@@ -91,8 +91,12 @@ class FakeFeedRepository implements FeedRepository {
   Future<List<FeedComment>> comments(String postId) async =>
       commentList.where((c) => c.postId == postId).toList();
   @override
-  Future<FeedComment> addComment(String postId, String body) async {
+  Future<FeedComment> addComment(String postId, String body,
+      {String? replyTo}) async {
+    final target =
+        replyTo == null ? null : commentList.firstWhere((c) => c.id == replyTo);
     final comment = FeedComment(
+        parentId: target == null ? null : (target.parentId ?? target.id),
         id: 'comment-${commentList.length + 1}',
         postId: postId,
         authorId: 'user-1',
@@ -105,7 +109,8 @@ class FakeFeedRepository implements FeedRepository {
 
   @override
   Future<void> deleteComment(String commentId) async {
-    commentList.removeWhere((c) => c.id == commentId);
+    commentList
+        .removeWhere((c) => c.id == commentId || c.parentId == commentId);
   }
 
   final searches = <String>[];

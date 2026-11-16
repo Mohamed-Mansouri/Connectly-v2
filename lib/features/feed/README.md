@@ -49,3 +49,7 @@ The composer can attach one photo (gallery or camera, optional crop/rotate via `
 ## Filters and sharing
 
 Chips are Me / Friends / Following; with none selected the scope is `all` (friends and followed people, never yourself). Tapping the selected chip returns to `all`; new posts show a snackbar pointing to Me. Share offers **Repost** (`repost(postId, comment)`: a `posts` row with `shared_post_id`, always the root original, comment optional) and **Send to a friend** (`MessagingRepository.sendPost`, stored in `message_posts`, drawn as a card in the chat). Schema v9 rebuilds `posts` with foreign keys off (enabled again in `onOpen`) so the body can be empty for photo-only posts and reposts.
+
+## All chip and comment replies
+
+Chips are Me / All / Friends / Following; **All** (scope `all`, selected by default) groups friends and followed people without your own posts. Comments support replies one level deep: `addComment(postId, body, replyTo:)` stores `parent_id` (schema v10) pointing at the top-level comment, even when replying to a reply. The sheet groups replies under their comment, indented, with a "Replying to …" bar; deleting a comment cascades to its replies.

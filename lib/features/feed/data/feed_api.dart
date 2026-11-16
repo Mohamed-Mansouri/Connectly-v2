@@ -140,7 +140,8 @@ class FeedApi implements FeedRepository {
   @override
   Future<List<FeedComment>> comments(String postId) async => throw _unsupported;
   @override
-  Future<FeedComment> addComment(String postId, String body) async =>
+  Future<FeedComment> addComment(String postId, String body,
+          {String? replyTo}) async =>
       throw _unsupported;
   @override
   Future<void> deleteComment(String commentId) async => throw _unsupported;

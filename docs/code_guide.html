@@ -49,7 +49,7 @@
   <p class="sub" style="text-align:center">Technical Report: Screens, Data Access and Database Model</p>
   <table>
     <tr><td><b>Application</b></td><td>Connectly (Flutter, Android)</td></tr>
-    <tr><td><b>Storage</b></td><td>Local SQLite database, schema version 9</td></tr>
+    <tr><td><b>Storage</b></td><td>Local SQLite database, schema version 10</td></tr>
     <tr><td><b>Date</b></td><td>November 2026</td></tr>
   </table>
 </div>
@@ -179,11 +179,11 @@ DELETE FROM password_resets WHERE user_id = ?;</pre>
 <ul>
   <li>Create a post (up to 3,000 characters) with text, one photo from the gallery or camera, or both, and delete one's own posts.</li>
   <li>Crop or rotate the photo before publishing; tap a photo in the feed to open it full screen with pinch-to-zoom.</li>
-  <li>Filter the feed with three chips: <b>Me</b> (own posts and reposts), <b>Friends</b> and <b>Following</b>. With no chip selected the feed shows everyone except the user; tapping the selected chip again returns to that view.</li>
+  <li>Filter the feed with four chips: <b>Me</b> (own posts and reposts), <b>All</b> (friends and followed people together, without the user's own posts; selected when the screen opens), <b>Friends</b> and <b>Following</b>.</li>
   <li>Share a post: <b>Repost to my feed</b> (with an optional comment; the original appears inside the repost) or <b>Send to a friend</b> (the post is sent as a message in the direct chat).</li>
   <li>React to a post (Like, Love, Celebrate, Insightful); one reaction per person.</li>
   <li>Tap the reaction counts to see the names of the people who reacted.</li>
-  <li>Comment on a post (1–1,000 characters); delete one's own comments or any comment on one's own post.</li>
+  <li>Comment on a post (1–1,000 characters) and reply to a comment, with one level of nesting; delete one's own comments or any comment on one's own post.</li>
   <li>Pull down to refresh; load older posts 20 at a time.</li>
   <li>Write <code>#hashtags</code> and <code>@mentions</code> in posts; both appear highlighted and can be tapped.</li>
   <li>Search posts by words, hashtags and people, see trending hashtags, and get suggestions while typing (Section 4.4).</li>
@@ -224,7 +224,7 @@ ORDER BY p.created_at DESC, p.id DESC
 LIMIT 21;</pre>
 <table>
   <tr><th>Filter</th><th>Condition on the author of the post</th></tr>
-  <tr><td>(none)</td><td>Not the user, and a friend or followed</td></tr>
+  <tr><td>All (default)</td><td>Not the user, and a friend or followed</td></tr>
   <tr><td>Me</td><td>The user</td></tr>
   <tr><td>Friends</td><td>Not the user, and an accepted friend</td></tr>
   <tr><td>Following</td><td>Not the user, and followed by the user</td></tr>
@@ -238,9 +238,16 @@ ON CONFLICT(post_id, user_id) DO UPDATE SET kind = excluded.kind;</pre>
 FROM post_reactions r JOIN users u ON u.id = r.user_id
 WHERE r.post_id = ? ORDER BY u.name;</pre>
 <h4>Comments</h4>
-<pre>SELECT c.id, c.body, c.created_at, u.name AS author_name
+<pre>SELECT c.id, c.body, c.created_at, c.parent_id, u.name AS author_name
 FROM post_comments c JOIN users u ON u.id = c.author_id
 WHERE c.post_id = ? ORDER BY c.created_at;</pre>
+<h4>Replies (one level of nesting)</h4>
+<p>A reply is a comment whose <code>parent_id</code> is a top-level comment of the same post. When the user replies to a reply, the repository stores the reply's own parent instead, so threads never go deeper than one level:</p>
+<pre>SELECT id, parent_id FROM post_comments WHERE id = :replyTo AND post_id = :postId;
+-- parent = (parent_id of that row) if it is a reply, otherwise its id
+INSERT INTO post_comments (id, post_id, author_id, body, created_at, parent_id)
+VALUES (?, ?, :me, ?, now, :parent);</pre>
+<p>The comments are read in one query and grouped in Dart: each top-level comment is followed by its replies, which are indented. Tapping "Reply" shows "Replying to …" above the input. <code>parent_id</code> uses <code>ON DELETE CASCADE</code>, so deleting a comment also deletes its replies.</p>
 <p>Before any action, the repository checks that the post is visible to the user. Deleting a post also deletes its reactions and comments automatically (<code>ON DELETE CASCADE</code>).</p>
 
 <h4>Post photos</h4>
@@ -397,6 +404,7 @@ ON CONFLICT(user_id) DO UPDATE SET photo = excluded.photo, updated_at = excluded
   <tr><td>users ↔ users</td><td>friendships</td><td>Many-to-many (mutual, pending or accepted)</td></tr>
   <tr><td>users ↔ posts</td><td>post_reactions</td><td>Many-to-many, one reaction per user per post</td></tr>
   <tr><td>posts</td><td>post_comments</td><td>One post has many comments</td></tr>
+  <tr><td>post_comments</td><td>post_comments (parent_id)</td><td>One comment has many replies (one level)</td></tr>
   <tr><td>posts</td><td>post_images</td><td>One-to-one (optional photo)</td></tr>
   <tr><td>posts</td><td>posts (shared_post_id)</td><td>One post has many reposts</td></tr>
   <tr><td>messages</td><td>message_posts</td><td>One-to-one (a message can carry a post)</td></tr>
@@ -460,11 +468,12 @@ ON CONFLICT(user_id) DO UPDATE SET photo = excluded.photo, updated_at = excluded
   <tr><td class="k">user_id</td><td>TEXT</td><td>PK, FK users</td><td>User who reacted</td></tr>
   <tr><td class="k">kind</td><td>TEXT</td><td></td><td>like, love, celebrate or insightful</td></tr>
 
-  <tr><td rowspan="5"><b>post_comments</b></td><td class="k">id</td><td>TEXT</td><td>PK</td><td>Unique identifier</td></tr>
+  <tr><td rowspan="6"><b>post_comments</b></td><td class="k">id</td><td>TEXT</td><td>PK</td><td>Unique identifier</td></tr>
   <tr><td class="k">post_id</td><td>TEXT</td><td>FK posts</td><td>Commented post</td></tr>
   <tr><td class="k">author_id</td><td>TEXT</td><td>FK users</td><td>Author</td></tr>
   <tr><td class="k">body</td><td>TEXT</td><td></td><td>1 to 1,000 characters</td></tr>
   <tr><td class="k">created_at</td><td>TEXT</td><td></td><td>Date</td></tr>
+  <tr><td class="k">parent_id</td><td>TEXT</td><td>FK post_comments</td><td>Top-level comment this replies to (null for a comment)</td></tr>
 
   <tr><td rowspan="4"><b>post_images</b></td><td class="k">post_id</td><td>TEXT</td><td>PK, FK posts</td><td>Post the photo belongs to</td></tr>
   <tr><td class="k">data</td><td>BLOB</td><td></td><td>JPEG bytes, up to 2 MB</td></tr>
@@ -524,6 +533,7 @@ ON CONFLICT(user_id) DO UPDATE SET photo = excluded.photo, updated_at = excluded
   <tr><td>7</td><td>post_tags, post_mentions, posts_fts and its triggers; existing posts are indexed during the upgrade</td></tr>
   <tr><td>8</td><td>post_images</td></tr>
   <tr><td>9</td><td><code>posts</code> rebuilt with <code>shared_post_id</code> and an optional body (copied row by row with foreign keys off, then indexes and full-text triggers recreated); message_posts</td></tr>
+  <tr><td>10</td><td>post_comments.parent_id (comment replies)</td></tr>
 </table>
 <p class="caption">Table 9. Database versions</p>
 

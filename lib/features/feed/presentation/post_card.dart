@@ -220,18 +220,25 @@ class PostCard extends StatelessWidget {
                 ])),
           Divider(color: Colors.white.withValues(alpha: .08), height: 1),
           const SizedBox(height: 8),
-          Wrap(spacing: 12, runSpacing: 4, children: [
-            _reactButton(),
-            TextButton.icon(
-              key: Key('comment_${post.id}'),
-              onPressed: onComment,
-              style: TextButton.styleFrom(foregroundColor: feedMuted),
-              icon: const Icon(Icons.mode_comment_outlined, size: 20),
-              label: const Text('Comment',
-                  style: TextStyle(fontWeight: FontWeight.w600)),
+          // Equal thirds on one line; labels shrink instead of wrapping on
+          // narrow screens or with large text.
+          Row(children: [
+            Expanded(child: _reactButton()),
+            Expanded(
+              child: InkWell(
+                key: Key('comment_${post.id}'),
+                onTap: onComment,
+                borderRadius: BorderRadius.circular(10),
+                child: _action(
+                    const Icon(Icons.mode_comment_outlined,
+                        size: 20, color: feedMuted),
+                    'Comment',
+                    feedMuted),
+              ),
             ),
             if (onShare != null && _canShare)
-              PopupMenuButton<String>(
+              Expanded(
+                  child: PopupMenuButton<String>(
                 key: Key('share_${post.id}'),
                 enabled: !busy,
                 tooltip: 'Share this post',
@@ -250,17 +257,12 @@ class PostCard extends StatelessWidget {
                           leading: Icon(Icons.send_outlined),
                           title: Text('Send to a friend'))),
                 ],
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.share_outlined, size: 20, color: feedMuted),
-                    SizedBox(width: 8),
-                    Text('Share',
-                        style: TextStyle(
-                            color: feedMuted, fontWeight: FontWeight.w600)),
-                  ]),
-                ),
-              ),
+                child: _action(
+                    const Icon(Icons.share_outlined,
+                        size: 20, color: feedMuted),
+                    'Share',
+                    feedMuted),
+              )),
           ]),
         ]),
       );
@@ -286,30 +288,35 @@ class PostCard extends StatelessWidget {
             const PopupMenuItem(
                 value: 'remove', child: Text('Remove reaction')),
         ],
-        child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              if (busy)
-                const SizedBox.square(
+        child: _action(
+            busy
+                ? const SizedBox.square(
                     dimension: 18,
                     child: CircularProgressIndicator(strokeWidth: 2))
-              else
-                Icon(
+                : Icon(
                     reactionIcons[post.myReaction] ??
                         Icons.add_reaction_outlined,
                     size: 21,
                     color: post.myReaction == null
                         ? feedMuted
                         : ConnectlyTheme.yellow),
-              const SizedBox(width: 8),
-              Text(reactionLabels[post.myReaction] ?? 'React',
-                  style: TextStyle(
-                      color: post.myReaction == null
-                          ? feedMuted
-                          : ConnectlyTheme.yellow,
-                      fontWeight: FontWeight.w600)),
-              const SizedBox(width: 4),
-              const Icon(Icons.expand_more, size: 18, color: feedMuted),
-            ])),
+            reactionLabels[post.myReaction] ?? 'React',
+            post.myReaction == null ? feedMuted : ConnectlyTheme.yellow),
+      );
+
+  /// Icon + label centred in its third of the action row.
+  Widget _action(Widget icon, String label, Color color) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+        child: Center(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              icon,
+              const SizedBox(width: 6),
+              Text(label,
+                  style: TextStyle(color: color, fontWeight: FontWeight.w600)),
+            ]),
+          ),
+        ),
       );
 }

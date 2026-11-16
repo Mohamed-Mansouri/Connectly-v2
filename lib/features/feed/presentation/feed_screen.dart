@@ -293,11 +293,12 @@ class _FeedScreenState extends State<FeedScreen> {
                                   ])),
                             )),
                         const SizedBox(height: 20),
-                        // No chip selected = everyone but you. Tapping the
-                        // selected chip again returns to that view.
+                        // "All" (the default) = friends and followed people,
+                        // without your own posts, which are under "Me".
                         Wrap(spacing: 8, runSpacing: 8, children: [
                           for (final filter in const {
                             'me': 'Me',
+                            'all': 'All',
                             'friends': 'Friends',
                             'following': 'Following'
                           }.entries)
@@ -305,8 +306,8 @@ class _FeedScreenState extends State<FeedScreen> {
                                 key: Key('filter_${filter.key}'),
                                 label: Text(filter.value),
                                 selected: controller.scope == filter.key,
-                                onSelected: (selected) => controller.refresh(
-                                    filter: selected ? filter.key : 'all')),
+                                onSelected: (_) =>
+                                    controller.refresh(filter: filter.key)),
                         ]),
                         const SizedBox(height: 20),
                         if (controller.loading)
